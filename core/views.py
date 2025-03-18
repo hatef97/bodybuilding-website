@@ -10,4 +10,15 @@ class UserRegistrationView(generics.CreateAPIView):
     API view for user registration.
     """
     serializer_class = UserRegistrationSerializer
-    
+
+
+
+class UserProfileView(generics.RetrieveUpdateAPIView):
+    """
+    API view for viewing and updating user profile details.
+    """
+    serializer_class = UserProfileSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
