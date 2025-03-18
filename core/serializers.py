@@ -48,3 +48,25 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         user.set_password(password)  # Hash the password before saving
         user.save()
         return user
+
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    """
+    Serializer for viewing and updating user profile details.
+    """
+    class Meta:
+        model = CustomUser
+        fields = ('id', 'email', 'username', 'first_name', 'last_name', 'date_of_birth', 'is_active', 'date_joined')
+
+
+    def update(self, instance, validated_data):
+        """
+        Update the user profile with the new data.
+        """
+        instance.first_name = validated_data.get('first_name', instance.first_name)
+        instance.last_name = validated_data.get('last_name', instance.last_name)
+        instance.date_of_birth = validated_data.get('date_of_birth', instance.date_of_birth)
+        instance.is_active = validated_data.get('is_active', instance.is_active)
+        instance.save()
+        return instance
