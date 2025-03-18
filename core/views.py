@@ -22,3 +22,16 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user
+
+
+
+class ChangePasswordView(generics.UpdateAPIView):
+    """
+    API view for changing the user's password.
+    """
+    serializer_class = ChangePasswordSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
+        
