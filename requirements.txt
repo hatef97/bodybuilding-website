@@ -1,6 +1,7 @@
 asgiref==3.8.1
 Django==5.1.7
 djangorestframework==3.15.2
+drf-nested-routers==0.94.1
 mysqlclient==2.2.7
 python-dotenv==1.0.1
 sqlparse==0.5.3
