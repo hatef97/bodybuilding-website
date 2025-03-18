@@ -1,0 +1,26 @@
+# Ignore Python compiled files
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore environment files
+.env
+venv/
+.env.local
+
+# Ignore database and migrations
+*.sqlite3
+db.sqlite3
+migrations/
+
+# Ignore Django static and media files
+staticfiles/
+media/
+
+# Ignore VSCode and JetBrains IDE settings
+.vscode/
+.idea/
+
+# Ignore Django secret key and config files
+config/settings/local.py
+.env
