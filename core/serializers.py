@@ -70,3 +70,42 @@ class UserProfileSerializer(serializers.ModelSerializer):
         instance.is_active = validated_data.get('is_active', instance.is_active)
         instance.save()
         return instance
+
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """
+    Serializer for changing the user's password.
+    """
+    old_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True, required=True)
+
+
+    def validate_new_password(self, value):
+        """
+        Custom validation for the new password (e.g., length requirement).
+        """
+        if len(value) < 8:
+            raise ValidationError("New password must be at least 8 characters long.")
+        return value
+
+
+    def validate_old_password(self, value):
+        """
+        Validate the old password. You can add further logic here (e.g., check if password matches).
+        """
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise ValidationError("The old password is incorrect.")
+        return value
+
+
+    def save(self):
+        """
+        Change the password for the user.
+        """
+        user = self.context['request'].user
+        new_password = self.validated_data['new_password']
+        user.set_password(new_password)
+        user.save()
+        return user
