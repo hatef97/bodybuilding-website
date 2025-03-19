@@ -207,3 +207,101 @@ class UserRegistrationSerializerTests(TestCase):
         serializer = UserRegistrationSerializer(data=data)
         self.assertFalse(serializer.is_valid())
         self.assertIn('email', serializer.errors)
+
+
+
+class UserProfileSerializerTests(TestCase):
+
+    def setUp(self):
+        """Create a user for testing the profile serializer."""
+        self.user = CustomUser.objects.create_user(
+            email='testuser@example.com',
+            username='testuser',
+            password='strongpassword',
+            first_name='Test',
+            last_name='User',
+            date_of_birth='1990-01-01',
+            is_active=True
+        )
+        self.serializer = UserProfileSerializer(instance=self.user)
+
+
+    def test_serializer_fields(self):
+        """Test that the serializer includes the correct fields."""
+        data = self.serializer.data
+        self.assertEqual(set(data.keys()), set(['id', 'email', 'username', 'first_name', 'last_name', 'date_of_birth', 'is_active', 'date_joined']))
+
+
+    def test_serializer_valid_data(self):
+        """Test that the serializer is valid with correct data."""
+        valid_data = {
+            'email': 'updatedemail@example.com',
+            'username': 'updatedusername',
+            'first_name': 'Updated',
+            'last_name': 'User',
+            'date_of_birth': '1992-02-02',
+            'is_active': False
+        }
+
+        serializer = UserProfileSerializer(data=valid_data, instance=self.user)
+        self.assertTrue(serializer.is_valid())
+
+
+    def test_serializer_invalid_data(self):
+        """Test that the serializer raises validation errors with invalid data."""
+        invalid_data = {
+            'email': 'not_an_email',
+            'username': '',
+            'first_name': 'Updated',
+            'last_name': 'User',
+            'date_of_birth': 'invalid-date',
+            'is_active': 'not_a_boolean'
+        }
+
+        serializer = UserProfileSerializer(data=invalid_data, instance=self.user)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('email', serializer.errors)
+        self.assertIn('username', serializer.errors)
+        self.assertIn('date_of_birth', serializer.errors)
+        self.assertIn('is_active', serializer.errors)
+
+
+    def test_update_user_profile(self):
+        """Test that the update method correctly updates the user profile."""
+        updated_data = {
+            'first_name': 'UpdatedFirstName',
+            'last_name': 'UpdatedLastName',
+            'date_of_birth': '1992-02-02',
+            'is_active': False
+        }
+
+        serializer = UserProfileSerializer(instance=self.user, data=updated_data, partial=True)
+        self.assertTrue(serializer.is_valid())
+
+        # Save the updated data
+        updated_user = serializer.save()
+
+        # Verify that the fields were updated
+        self.assertEqual(updated_user.first_name, 'UpdatedFirstName')
+        self.assertEqual(updated_user.last_name, 'UpdatedLastName')
+        self.assertEqual(str(updated_user.date_of_birth), '1992-02-02')
+        self.assertFalse(updated_user.is_active)
+
+
+    def test_update_user_profile_partial(self):
+        """Test that the update method allows partial updates."""
+        partial_data = {
+            'first_name': 'PartialUpdatedFirstName'
+        }
+
+        serializer = UserProfileSerializer(instance=self.user, data=partial_data, partial=True)
+        self.assertTrue(serializer.is_valid())
+
+        # Save the updated data
+        updated_user = serializer.save()
+
+        # Verify that only the first_name field was updated
+        self.assertEqual(updated_user.first_name, 'PartialUpdatedFirstName')
+        self.assertEqual(updated_user.last_name, 'User')  # last_name remains unchanged
+        self.assertEqual(str(updated_user.date_of_birth), '1990-01-01')  # date_of_birth remains unchanged
+        self.assertTrue(updated_user.is_active)  # is_active remains unchanged
