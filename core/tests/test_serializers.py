@@ -126,3 +126,84 @@ class CustomUserSerializerTests(TestCase):
         self.assertEqual(user.first_name, valid_data['first_name'])
         self.assertEqual(user.last_name, valid_data['last_name'])
         self.assertEqual(str(user.date_of_birth), valid_data['date_of_birth'])
+
+
+
+class UserRegistrationSerializerTests(TestCase):
+
+    def setUp(self):
+        """Set up test data."""
+        self.valid_data = {
+            'email': 'valid@example.com',
+            'username': 'validuser',
+            'password': 'StrongPassword123',
+            'first_name': 'Test',
+            'last_name': 'User',
+            'date_of_birth': '1990-01-01'
+        }
+
+        self.invalid_data = {
+            'email': 'invalid@example.com',
+            'username': 'invaliduser',
+            'password': 'short',
+            'first_name': 'Invalid',
+            'last_name': 'User',
+            'date_of_birth': '1990-01-01'
+        }
+
+
+    def test_serializer_valid_data(self):
+        """Test that serializer is valid with correct data."""
+        serializer = UserRegistrationSerializer(data=self.valid_data)
+        self.assertTrue(serializer.is_valid())
+
+
+    def test_serializer_invalid_password(self):
+        """Test that serializer raises a validation error for short password."""
+        serializer = UserRegistrationSerializer(data=self.invalid_data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('password', serializer.errors)
+        self.assertEqual(serializer.errors['password'][0], "Password must be at least 8 characters long.")
+
+
+    def test_serializer_create_user_with_valid_data(self):
+        """Test that a user is created with valid data and password is hashed."""
+        serializer = UserRegistrationSerializer(data=self.valid_data)
+        self.assertTrue(serializer.is_valid())
+
+        # Save the user using the serializer's create method
+        user = serializer.save()
+
+        # Check that user is created in the database
+        self.assertEqual(CustomUser.objects.count(), 1)
+        created_user = CustomUser.objects.first()
+
+        # Verify that the user fields are correctly set
+        self.assertEqual(created_user.email, self.valid_data['email'])
+        self.assertEqual(created_user.username, self.valid_data['username'])
+        self.assertEqual(created_user.first_name, self.valid_data['first_name'])
+        self.assertEqual(created_user.last_name, self.valid_data['last_name'])
+
+        # Check that the password is hashed (not equal to the original plain password)
+        self.assertNotEqual(created_user.password, self.valid_data['password'])
+        self.assertTrue(created_user.check_password(self.valid_data['password']))
+
+
+    def test_create_user_without_password(self):
+        """Test that serializer raises an error when password is not provided."""
+        data = self.valid_data.copy()
+        data.pop('password')  # Remove the password
+
+        serializer = UserRegistrationSerializer(data=data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('password', serializer.errors)
+
+
+    def test_create_user_missing_required_fields(self):
+        """Test that serializer raises an error when required fields are missing."""
+        data = self.valid_data.copy()
+        data.pop('email')  # Remove the email
+
+        serializer = UserRegistrationSerializer(data=data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('email', serializer.errors)
