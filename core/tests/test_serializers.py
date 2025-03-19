@@ -305,3 +305,101 @@ class UserProfileSerializerTests(TestCase):
         self.assertEqual(updated_user.last_name, 'User')  # last_name remains unchanged
         self.assertEqual(str(updated_user.date_of_birth), '1990-01-01')  # date_of_birth remains unchanged
         self.assertTrue(updated_user.is_active)  # is_active remains unchanged
+
+
+
+class ChangePasswordSerializerTests(TestCase):
+
+    def setUp(self):
+        """Set up test user for password change."""
+        self.user = CustomUser.objects.create_user(
+            email='testuser@example.com',
+            username='testuser',
+            password='oldpassword123',  # Set initial password
+        )
+        self.valid_data = {
+            'old_password': 'oldpassword123',
+            'new_password': 'newpassword123',
+        }
+
+        self.invalid_data = {
+            'old_password': 'wrongoldpassword',
+            'new_password': 'short',  # Invalid password (too short)
+        }
+
+
+    def test_serializer_valid_data(self):
+        """Test that the serializer is valid with correct old and new passwords."""
+        # Initialize the serializer with valid data
+        serializer = ChangePasswordSerializer(data=self.valid_data, context={'request': self._mock_request()})
+        self.assertTrue(serializer.is_valid())
+
+
+    def test_serializer_invalid_new_password(self):
+        """Test that the serializer raises a validation error for new password being too short."""
+        # Set a short new password (less than 8 characters)
+        data = self.valid_data.copy()
+        data['new_password'] = 'short'  # Invalid new password
+        serializer = ChangePasswordSerializer(data=data, context={'request': self._mock_request()})
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('new_password', serializer.errors)
+        self.assertEqual(serializer.errors['new_password'][0], "New password must be at least 8 characters long.")
+
+
+    def test_serializer_invalid_old_password(self):
+        """Test that the serializer raises a validation error when the old password is incorrect."""
+        # Change the old password to a wrong one
+        data = self.invalid_data.copy()
+        serializer = ChangePasswordSerializer(data=data, context={'request': self._mock_request()})
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('old_password', serializer.errors)
+        self.assertEqual(serializer.errors['old_password'][0], "The old password is incorrect.")
+
+
+    def test_change_password_successfully(self):
+        """Test that the password is successfully changed when the old password is correct."""
+        # Create a serializer with valid data
+        serializer = ChangePasswordSerializer(data=self.valid_data, context={'request': self._mock_request()})
+        self.assertTrue(serializer.is_valid())
+
+        # Call save to change the password
+        user = serializer.save()
+
+        # Verify the user’s password has been updated and hashed
+        self.assertTrue(user.check_password('newpassword123'))
+        self.assertFalse(user.check_password('oldpassword123'))
+
+
+    def test_missing_new_password(self):
+        """Test that the serializer raises an error if new_password is missing."""
+        data = {
+            'old_password': 'oldpassword123',
+        }
+        serializer = ChangePasswordSerializer(data=data, context={'request': self._mock_request()})
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('new_password', serializer.errors)
+        self.assertEqual(serializer.errors['new_password'][0], 'This field is required.')
+
+
+    def test_missing_old_password(self):
+        """Test that the serializer raises an error if old_password is missing."""
+        data = {
+            'new_password': 'newpassword123',
+        }
+        serializer = ChangePasswordSerializer(data=data, context={'request': self._mock_request()})
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('old_password', serializer.errors)
+        self.assertEqual(serializer.errors['old_password'][0], 'This field is required.')
+
+
+    def _mock_request(self):
+        """Helper method to mock request context for the user."""
+        class MockRequest:
+            def __init__(self, user):
+                self.user = user
+
+        return MockRequest(user=self.user)
