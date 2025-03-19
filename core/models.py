@@ -2,6 +2,7 @@ from datetime import datetime
 
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
+from django.core.exceptions import ValidationError 
 
 
 
@@ -46,3 +47,10 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+
+    def clean(self):
+        """Ensure that the username is provided."""
+        if not self.username:
+            raise ValidationError('The Username field must be set') 
+        super().clean()  # Call parent clean method
+        
