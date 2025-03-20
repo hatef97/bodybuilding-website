@@ -1,7 +1,8 @@
 from rest_framework import generics, viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
+
 
 from .serializers import *
 
@@ -12,10 +13,17 @@ class UserRegistrationViewSet(viewsets.GenericViewSet):
     API view for user registration.
     """
     serializer_class = UserRegistrationSerializer
-    permission_classes = [IsAuthenticated, IsAdminUser]  # Only admin users can view the list
-
     # Define the queryset to retrieve users
     queryset = CustomUser.objects.all()
+
+    def get_permissions(self):
+        """
+        Allow anyone to register but restrict listing users to admins.
+        """
+        if self.action == 'create':
+            return [AllowAny()]
+        return [IsAuthenticated(), IsAdminUser()]
+
 
     def create(self, request, *args, **kwargs):
         """
@@ -34,7 +42,7 @@ class UserRegistrationViewSet(viewsets.GenericViewSet):
         List all users - only accessible by admin.
         """
         if not request.user.is_staff:
-            return Response({"detail": "Not authorized."}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": "You do not have permission to perform this action."}, status=status.HTTP_403_FORBIDDEN)
         
         # Use the queryset to retrieve the list of users
         queryset = self.get_queryset()
