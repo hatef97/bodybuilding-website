@@ -3,6 +3,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
+from rest_framework.authtoken.models import Token
+from rest_framework.views import APIView
+
+from django.contrib.auth import authenticate
 
 from .serializers import *
 
@@ -13,7 +17,6 @@ class UserRegistrationViewSet(viewsets.GenericViewSet):
     API view for user registration.
     """
     serializer_class = UserRegistrationSerializer
-    # Define the queryset to retrieve users
     queryset = CustomUser.objects.all()
 
     def get_permissions(self):
@@ -24,27 +27,14 @@ class UserRegistrationViewSet(viewsets.GenericViewSet):
             return [AllowAny()]
         return [IsAuthenticated(), IsAdminUser()]
 
-
     def create(self, request, *args, **kwargs):
-        """
-        Handle user registration (POST).
-        """
         serializer = self.get_serializer(data=request.data)
-        
         if serializer.is_valid():
-            user = serializer.save()  # Save the new user to the database
+            user = serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
-        
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def list(self, request, *args, **kwargs):
-        """
-        List all users - only accessible by admin.
-        """
-        if not request.user.is_staff:
-            return Response({"detail": "You do not have permission to perform this action."}, status=status.HTTP_403_FORBIDDEN)
-        
-        # Use the queryset to retrieve the list of users
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
@@ -79,25 +69,16 @@ class UserProfileViewSet(
 
 
 
-class ChangePasswordViewSet(viewsets.GenericViewSet):
+class ChangePasswordViewSet(viewsets.ViewSet):
     """
     API view for changing the user's password.
     """
-    serializer_class = ChangePasswordSerializer
     permission_classes = [IsAuthenticated]
+    serializer_class = ChangePasswordSerializer  
 
-
-    def get_object(self):
-        return self.request.user
-
-
-    def update(self, request, *args, **kwargs):
-        """
-        Handle password change.
-        """
-        user = self.get_object()
-        serializer = self.get_serializer(user, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({"message": "Password changed successfully."})
-        return Response(serializer.errors, status=400)
+    @action(detail=False, methods=["post"], url_path="change-password")
+    def change_password(self, request):
+        serializer = self.get_serializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"detail": "Password updated successfully."}, status=status.HTTP_200_OK)
