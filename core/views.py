@@ -1,8 +1,8 @@
-from rest_framework import generics, viewsets, status
+from rest_framework import generics, viewsets, status, mixins
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
-
 
 from .serializers import *
 
@@ -51,24 +51,31 @@ class UserRegistrationViewSet(viewsets.GenericViewSet):
 
 
 
-class UserProfileViewSet(viewsets.GenericViewSet):
+class UserProfileViewSet(
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    viewsets.GenericViewSet
+):
     """
     API view for viewing and updating user profile details.
     """
     serializer_class = UserProfileSerializer
-
+    permission_classes = [IsAuthenticated]
 
     def get_object(self):
         # This will allow each user to access their own profile
         return self.request.user
 
-
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-
-    def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
+    @action(detail=False, methods=["get", "put"], url_path="me")
+    def me(self, request):
+        if request.method == "GET":
+            serializer = self.get_serializer(self.request.user)
+            return Response(serializer.data)
+        elif request.method == "PUT":
+            serializer = self.get_serializer(self.request.user, data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
 
 
 

@@ -58,6 +58,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
         fields = ('id', 'email', 'username', 'first_name', 'last_name', 'date_of_birth', 'is_active', 'date_joined')
+        read_only_fields = ('id', 'email', 'username', 'date_joined')
 
 
     def update(self, instance, validated_data):

@@ -1,6 +1,7 @@
 from rest_framework.test import APITestCase
 from rest_framework import status
 from rest_framework.authtoken.models import Token
+from rest_framework.test import APIClient
 
 from django.contrib.auth import get_user_model
 from django.urls import reverse
@@ -133,3 +134,84 @@ class UserRegistrationViewSetTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('username', response.data)  # Should return a username already exists error
+
+
+
+class UserProfileViewSetTests(APITestCase):
+
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            email="user@example.com",
+            username="testuser",
+            password="testpassword",
+            first_name="John",
+            last_name="Doe",
+            date_of_birth="1990-01-01"
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+        # Assume your profile detail endpoint looks like this:
+        self.profile_url = reverse('user-profile-detail', kwargs={'pk': self.user.pk})
+
+
+    def test_retrieve_user_profile(self):
+        """Test that a user can retrieve their own profile."""
+        response = self.client.get(self.profile_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['email'], self.user.email)
+        self.assertEqual(response.data['username'], self.user.username)
+
+
+    def test_update_user_profile(self):
+        """Test that a user can update their own profile."""
+        update_data = {
+            "first_name": "Jane",
+            "last_name": "Smith",
+            "date_of_birth": "1995-05-05",
+            "is_active": False  # Field in serializer
+        }
+        response = self.client.put(self.profile_url, update_data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Fetch the user again from DB
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, update_data['first_name'])
+        self.assertEqual(self.user.last_name, update_data['last_name'])
+        self.assertEqual(str(self.user.date_of_birth), update_data['date_of_birth'])
+        self.assertFalse(self.user.is_active)
+
+
+    def test_unauthenticated_user_cannot_access_profile(self):
+        """Test that unauthenticated users cannot access profile endpoints."""
+        self.client.force_authenticate(user=None)  # Logout
+        response = self.client.get(self.profile_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+    def test_partial_update_user_profile(self):
+        """Test that a user can partially update their profile."""
+        partial_data = {"first_name": "Updated"}
+        response = self.client.patch(self.profile_url, partial_data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, "Updated")
+        self.assertEqual(self.user.last_name, "Doe")  # unchanged
+
+
+    def test_user_cannot_access_another_users_profile(self):
+        """Test that users cannot access or update other users' profiles."""
+        other_user = CustomUser.objects.create_user(
+            email="other@example.com",
+            username="otheruser",
+            password="otherpassword"
+        )
+        other_user_url = reverse('user-profile-detail', kwargs={'pk': other_user.pk})
+
+        response = self.client.get(other_user_url)
+        # Since get_object returns request.user, this shouldn't return the other user
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['email'], self.user.email)
