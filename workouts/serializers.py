@@ -48,3 +48,35 @@ class WorkoutPlanSerializer(serializers.ModelSerializer):
         for exercise_data in exercises_data:
             Exercise.objects.create(workout_plan=workout_plan, **exercise_data)
         return workout_plan
+
+
+
+class WorkoutLogSerializer(serializers.ModelSerializer):
+    """
+    Serializer for WorkoutLog model, responsible for logging user workouts.
+    """
+    user = serializers.PrimaryKeyRelatedField(queryset=CustomUser.objects.all(), write_only=True)
+    workout_plan = serializers.PrimaryKeyRelatedField(queryset=WorkoutPlan.objects.all(), write_only=True)
+    duration = serializers.IntegerField(min_value=1)  
+    
+    class Meta:
+        model = WorkoutLog
+        fields = ['id', 'user', 'workout_plan', 'date', 'duration', 'notes']
+        read_only_fields = ['id', 'date']
+
+    def validate_duration(self, value):
+        """
+        Ensure that workout duration is reasonable (must be greater than 0).
+        """
+        if value <= 0:
+            raise serializers.ValidationError("Duration must be greater than zero.")
+        return value
+
+    def create(self, validated_data):
+        """
+        Create a new workout log entry and associate it with the user and the workout plan.
+        """
+        user = validated_data['user']
+        workout_plan = validated_data['workout_plan']
+        log_entry = WorkoutLog.objects.create(**validated_data)
+        return log_entry
