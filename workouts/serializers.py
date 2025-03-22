@@ -46,7 +46,8 @@ class WorkoutPlanSerializer(serializers.ModelSerializer):
         exercises_data = validated_data.pop('exercises')
         workout_plan = WorkoutPlan.objects.create(**validated_data)
         for exercise_data in exercises_data:
-            Exercise.objects.create(workout_plan=workout_plan, **exercise_data)
+            exercise = Exercise.objects.create(**exercise_data)
+            workout_plan.exercises.add(exercise)
         return workout_plan
 
 
