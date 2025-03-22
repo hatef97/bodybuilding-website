@@ -77,12 +77,6 @@ class WorkoutPlanViewSet(viewsets.ModelViewSet):
     """
     serializer_class = WorkoutPlanSerializer
     pagination_class = StandardResultsSetPagination
-
-    # Optimized queryset with prefetch_related to efficiently fetch exercises related to workout plans
-    queryset = WorkoutPlan.objects.all().prefetch_related(
-        Prefetch('exercises', queryset=Exercise.objects.all())  # Efficiently prefetch exercises
-    )
-
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     ordering_fields = ['name', 'created_at']
     search_fields = ['name']
@@ -106,7 +100,49 @@ class WorkoutPlanViewSet(viewsets.ModelViewSet):
         # Apply dynamic filters (search, category, etc.)
         queryset = self._apply_filters(queryset)
 
-        # Return the optimized queryset with prefetching for exercises
+        # Apply prefetch_related for related objects to minimize the number of queries
+        queryset = queryset.prefetch_related('exercises')  # Example: Pre-fetch exercises if needed
+
+        return queryset
+
+    def _apply_filters(self, queryset):
+        """
+        Apply search, category, and ordering filters to the queryset dynamically.
+        """
+        search_query = self.request.query_params.get('search', None)
+        category_filter = self.request.query_params.get('category', None)
+        ordering = self.request.query_params.get('ordering', None)
+
+        if search_query:
+            queryset = queryset.filter(
+                Q(name__icontains=search_query) | Q(category__icontains=search_query)
+            )
+
+        if category_filter:
+            queryset = queryset.filter(category__icontains=category_filter)
+
+        if ordering:
+            queryset = self._apply_ordering_filter(queryset, ordering)
+
+        return queryset
+
+    def _apply_ordering_filter(self, queryset, ordering):
+        """
+        Helper method to validate and apply ordering.
+        """
+        # Handle ordering by multiple fields, such as 'name,-created_at' for descending sorting
+        valid_fields = ['name', 'created_at', 'category']  # Add more valid fields here
+        ordering_fields = ordering.split(",") if ordering else ['name']
+
+        # Validate ordering fields
+        ordering_fields = [field for field in ordering_fields if field.lstrip('-') in valid_fields]
+
+        # Apply the valid ordering fields
+        if ordering_fields:
+            queryset = queryset.order_by(*ordering_fields)
+        else:
+            queryset = queryset.order_by('name')  # Default ordering by 'name'
+
         return queryset
 
     def _apply_filters(self, queryset):
@@ -147,4 +183,3 @@ class WorkoutPlanViewSet(viewsets.ModelViewSet):
         exercises = workout_plan.exercises.all()  # Fetch related exercises
         serializer = ExerciseSerializer(exercises, many=True)  # Serialize exercises
         return Response(serializer.data)  # Return serialized exercises as response
-        
