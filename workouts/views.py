@@ -6,7 +6,8 @@ from rest_framework.filters import OrderingFilter
 from rest_framework.pagination import PageNumberPagination
 
 from django_filters.rest_framework import DjangoFilterBackend
-from django.db.models import Q, Prefetch
+from django.db.models import Q, Prefetch, Sum
+from django.utils import timezone
 
 from .models import Exercise, WorkoutPlan, WorkoutLog
 from .serializers import ExerciseSerializer, WorkoutPlanSerializer, WorkoutLogSerializer, UserWorkoutLogSerializer
@@ -183,3 +184,82 @@ class WorkoutPlanViewSet(viewsets.ModelViewSet):
         exercises = workout_plan.exercises.all()  # Fetch related exercises
         serializer = ExerciseSerializer(exercises, many=True)  # Serialize exercises
         return Response(serializer.data)  # Return serialized exercises as response
+
+
+
+class WorkoutLogViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for tracking individual workout logs with optimized queries and flexible permissions.
+    """
+    serializer_class = WorkoutLogSerializer
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    ordering_fields = ['date', 'duration']
+    search_fields = ['workout_plan__name', 'user__email']
+
+    def get_permissions(self):
+        """
+        Override permissions for different actions.
+        """
+        if self.action in ['create', 'update', 'destroy']:
+            return [IsAdminUser()]  # Only admins can create, update, or delete workout plans
+        return [IsAuthenticated()]  # Default permission for all other actions
+
+    def get_queryset(self):
+        """
+        Override to optimize and filter the queryset with additional filters and optimizations.
+        """
+        # Start with the base queryset and apply prefetch for related data.
+        queryset = WorkoutLog.objects.all().select_related('user', 'workout_plan').prefetch_related(
+            'exercises'  # Efficiently prefetch exercises related to workout logs
+        )
+
+        # Apply dynamic filters (search, category, etc.)
+        queryset = self._apply_filters(queryset)
+
+        # Return the optimized queryset
+        return queryset
+
+    def perform_create(self, serializer):
+        """
+        Override the create method to automatically associate the log with the current user.
+        """
+        serializer.save(user=self.request.user)
+
+    @action(detail=True, methods=['get'])
+    def user_logs(self, request, pk=None):
+        """
+        Custom action to view logs of the currently authenticated user.
+        """
+        user = self.request.user
+        workout_logs = WorkoutLog.objects.filter(user=user)
+        serializer = UserWorkoutLogSerializer(workout_logs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def today_logs(self, request):
+        """
+        Custom action to retrieve today's workout logs for the authenticated user.
+        """
+        today = timezone.now().date()
+        workout_logs = WorkoutLog.objects.filter(user=request.user, date=today)
+        serializer = UserWorkoutLogSerializer(workout_logs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def user_workout_summary(self, request):
+        """
+        Custom action to provide a summary of the user's workout progress.
+        """
+        user = request.user
+        workout_logs = WorkoutLog.objects.filter(user=user)
+
+        total_workouts = workout_logs.count()
+        total_duration = workout_logs.aggregate(Sum('duration'))['duration__sum'] or 0
+
+        summary = {
+            'total_workouts': total_workouts,
+            'total_duration': total_duration,
+        }
+
+        return Response(summary, status=status.HTTP_200_OK)
