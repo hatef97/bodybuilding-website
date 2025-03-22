@@ -15,6 +15,7 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
+from django.conf import settings 
 from django.urls import path, include
 
 urlpatterns = [
@@ -22,3 +23,10 @@ urlpatterns = [
     path('auth/', include('djoser.urls')),  # 👈 registration, activation, reset, etc.
     path('auth/', include('djoser.urls.authtoken')),  # 👈 login/logout using tokens
 ]
+
+
+if settings.DEBUG:
+    import debug_toolbar
+    urlpatterns = [
+        path('__debug__/', include(debug_toolbar.urls)),
+    ] + urlpatterns
