@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date 
 
 from django.utils.timezone import now
 
@@ -162,3 +162,86 @@ class WorkoutPlanSerializerTests(APITestCase):
         self.assertTrue(serializer.is_valid(), serializer.errors)
         plan = serializer.save()
         self.assertNotEqual(str(plan.created_at.date()), "2023-01-01")  # Should be now
+
+
+
+class WorkoutLogSerializerTests(APITestCase):
+    
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            email="user@example.com", username="user1", password="testpass123"
+        )
+        self.exercise = Exercise.objects.create(
+            name="Push-up", category="Strength"
+        )
+        self.plan = WorkoutPlan.objects.create(
+            name="Morning Routine", description="Full body wake-up"
+        )
+        self.plan.exercises.add(self.exercise)
+
+        self.valid_data = {
+            "user": self.user.pk,
+            "workout_plan": self.plan.pk,
+            "duration": 45,
+            "notes": "Felt strong today!",
+            "date": date.today()
+        }
+
+
+    def test_valid_log_creation(self):
+        """Test that serializer successfully creates a WorkoutLog."""
+        serializer = WorkoutLogSerializer(data=self.valid_data)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        log = serializer.save()
+
+        self.assertIsInstance(log, WorkoutLog)
+        self.assertEqual(log.user, self.user)
+        self.assertEqual(log.workout_plan, self.plan)
+        self.assertEqual(log.duration, 45)
+        self.assertEqual(log.notes, "Felt strong today!")
+
+
+    def test_duration_must_be_positive(self):
+        """Test that duration <= 0 is rejected."""
+        data = self.valid_data.copy()
+        data["duration"] = 0
+        serializer = WorkoutLogSerializer(data=data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("duration", serializer.errors)
+        self.assertEqual(serializer.errors["duration"][0], "Duration must be greater than zero.")
+
+
+    def test_read_only_fields_cannot_be_set(self):
+        """Test that id and date fields are read-only."""
+        data = self.valid_data.copy()
+        data["id"] = 999
+        data["date"] = "2023-01-01"
+
+        serializer = WorkoutLogSerializer(data=data)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        log = serializer.save()
+
+        # Check that these values were ignored
+        self.assertNotEqual(log.id, 999)
+        self.assertNotEqual(str(log.date), "2023-01-01")
+
+
+    def test_missing_required_fields(self):
+        """Test that missing required fields raises errors."""
+        serializer = WorkoutLogSerializer(data={})
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("user", serializer.errors)
+        self.assertIn("workout_plan", serializer.errors)
+        self.assertIn("duration", serializer.errors)
+
+
+    def test_notes_field_is_optional(self):
+        """Test that notes can be omitted."""
+        data = self.valid_data.copy()
+        data.pop("notes")
+
+        serializer = WorkoutLogSerializer(data=data)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        log = serializer.save()
+
+        self.assertIsNone(log.notes)

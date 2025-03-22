@@ -37,7 +37,7 @@ class WorkoutLog(models.Model):
     """
     user = models.ForeignKey('core.CustomUser', on_delete=models.CASCADE)
     workout_plan = models.ForeignKey(WorkoutPlan, on_delete=models.CASCADE)
-    date = models.DateField()
+    date = models.DateField(auto_now_add=True)
     duration = models.PositiveIntegerField(help_text="Duration of the workout in minutes.")
     notes = models.TextField(blank=True, null=True)
 

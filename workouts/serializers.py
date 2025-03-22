@@ -1,3 +1,5 @@
+from datetime import date as dt_date
+
 from rest_framework import serializers
 
 from .models import Exercise, WorkoutPlan, WorkoutLog
@@ -58,7 +60,7 @@ class WorkoutLogSerializer(serializers.ModelSerializer):
     """
     user = serializers.PrimaryKeyRelatedField(queryset=CustomUser.objects.all(), write_only=True)
     workout_plan = serializers.PrimaryKeyRelatedField(queryset=WorkoutPlan.objects.all(), write_only=True)
-    duration = serializers.IntegerField(min_value=1)  
+    duration = serializers.IntegerField()  
 
     class Meta:
         model = WorkoutLog
@@ -80,6 +82,9 @@ class WorkoutLogSerializer(serializers.ModelSerializer):
         user = validated_data['user']
         workout_plan = validated_data['workout_plan']
         log_entry = WorkoutLog.objects.create(**validated_data)
+        if 'date' not in validated_data:
+            validated_data['date'] = dt_date.today()
+            return WorkoutLog.objects.create(**validated_data)
         return log_entry
 
 
