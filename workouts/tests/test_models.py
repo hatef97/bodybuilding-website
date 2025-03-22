@@ -1,7 +1,10 @@
+from datetime import date
+
 from django.test import TestCase
 from django.core.exceptions import ValidationError
 
-from workouts.models import Exercise, WorkoutPlan
+from workouts.models import Exercise, WorkoutPlan, WorkoutLog
+from core.models import CustomUser
 
 
 
@@ -112,3 +115,82 @@ class WorkoutPlanModelTests(TestCase):
         plan = WorkoutPlan(name="")
         with self.assertRaises(ValidationError):
             plan.full_clean()
+
+
+
+class WorkoutLogModelTests(TestCase):
+    
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            email="testuser@example.com",
+            username="testuser",
+            password="securepassword"
+        )
+        self.exercise = Exercise.objects.create(
+            name="Squats",
+            category="Strength"
+        )
+        self.plan = WorkoutPlan.objects.create(name="Leg Day")
+        self.plan.exercises.add(self.exercise)
+
+
+    def test_str_method(self):
+        """__str__ returns user email, plan name, and date."""
+        log = WorkoutLog.objects.create(
+            user=self.user,
+            workout_plan=self.plan,
+            date=date.today(),
+            duration=45
+        )
+        expected = f"{self.user.email} - {self.plan.name} ({log.date})"
+        self.assertEqual(str(log), expected)
+
+
+    def test_create_valid_workout_log(self):
+        """Create a workout log with all valid fields."""
+        log = WorkoutLog.objects.create(
+            user=self.user,
+            workout_plan=self.plan,
+            date=date(2024, 1, 15),
+            duration=60,
+            notes="Felt great!"
+        )
+        self.assertEqual(log.user, self.user)
+        self.assertEqual(log.workout_plan, self.plan)
+        self.assertEqual(log.duration, 60)
+        self.assertEqual(log.notes, "Felt great!")
+
+
+    def test_notes_field_is_optional(self):
+        """WorkoutLog is valid without notes."""
+        log = WorkoutLog.objects.create(
+            user=self.user,
+            workout_plan=self.plan,
+            date=date.today(),
+            duration=30
+        )
+        self.assertIsNone(log.notes)
+
+
+    def test_duration_must_be_positive(self):
+        """Negative duration should raise validation error."""
+        log = WorkoutLog(
+            user=self.user,
+            workout_plan=self.plan,
+            date=date.today(),
+            duration=-10
+        )
+        with self.assertRaises(ValidationError):
+            log.full_clean()
+
+
+    def test_missing_required_fields_raises_error(self):
+        """WorkoutLog with missing required fields should fail."""
+        log = WorkoutLog(
+            user=self.user,
+            workout_plan=self.plan,
+            date=None,  # missing date
+            duration=30
+        )
+        with self.assertRaises(ValidationError):
+            log.full_clean()
