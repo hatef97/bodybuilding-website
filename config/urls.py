@@ -22,6 +22,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('auth/', include('djoser.urls')),  # 👈 registration, activation, reset, etc.
     path('auth/', include('djoser.urls.authtoken')),  # 👈 login/logout using tokens
+    path('workout/', include('workouts.urls')),  # Include workout-related API URLs
+
 ]
 
 
