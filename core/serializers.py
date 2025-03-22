@@ -12,7 +12,7 @@ CustomUser = get_user_model()
 
 class CustomUserCreateSerializer(UserCreateSerializer):
     """
-    Custom User Registration Serializer with additional validation or fields.
+    Custom User Registration Serializer with additional validation.
     """
     password = serializers.CharField(write_only=True, required=True)
 
@@ -27,16 +27,6 @@ class CustomUserCreateSerializer(UserCreateSerializer):
         if len(value) < 8:
             raise serializers.ValidationError("Password must be at least 8 characters long.")
         return value
-
-    def create(self, validated_data):
-        """
-        Override create method to hash password before saving.
-        """
-        password = validated_data.pop('password')
-        user = CustomUser.objects.create(**validated_data)
-        user.set_password(password)  # Hash password before saving
-        user.save()
-        return user
 
 
 
