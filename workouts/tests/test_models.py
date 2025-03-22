@@ -1,7 +1,7 @@
 from django.test import TestCase
 from django.core.exceptions import ValidationError
 
-from workouts.models import Exercise
+from workouts.models import Exercise, WorkoutPlan
 
 
 
@@ -54,3 +54,61 @@ class ExerciseModelTests(TestCase):
         exercise = Exercise(name="", category="Strength")
         with self.assertRaises(ValidationError):
             exercise.full_clean()
+
+
+
+class WorkoutPlanModelTests(TestCase):
+
+    def setUp(self):
+        self.exercise1 = Exercise.objects.create(
+            name="Push-up",
+            category="Strength"
+        )
+        self.exercise2 = Exercise.objects.create(
+            name="Burpees",
+            category="Cardio"
+        )
+
+
+    def test_str_returns_name(self):
+        """__str__ should return the name of the workout plan."""
+        plan = WorkoutPlan.objects.create(name="Full Body Routine")
+        self.assertEqual(str(plan), "Full Body Routine")
+
+
+    def test_create_workout_plan_with_all_fields(self):
+        """Workout plan can be created with all fields filled."""
+        plan = WorkoutPlan.objects.create(
+            name="Morning Routine",
+            description="A simple morning plan."
+        )
+        plan.exercises.set([self.exercise1, self.exercise2])
+
+        self.assertEqual(plan.name, "Morning Routine")
+        self.assertEqual(plan.description, "A simple morning plan.")
+        self.assertEqual(plan.exercises.count(), 2)
+        self.assertIn(self.exercise1, plan.exercises.all())
+        self.assertIn(plan, self.exercise1.workout_plans.all())  # reverse relation
+
+
+    def test_description_is_optional(self):
+        """Workout plan should be valid without a description."""
+        plan = WorkoutPlan.objects.create(name="Quick Plan")
+        self.assertIsNone(plan.description)
+
+
+    def test_add_and_remove_exercises(self):
+        """Test adding and removing exercises to a workout plan."""
+        plan = WorkoutPlan.objects.create(name="Test Plan")
+        plan.exercises.add(self.exercise1)
+        self.assertEqual(plan.exercises.count(), 1)
+
+        plan.exercises.remove(self.exercise1)
+        self.assertEqual(plan.exercises.count(), 0)
+
+
+    def test_blank_name_should_fail_validation(self):
+        """Workout plan name is required and cannot be blank."""
+        plan = WorkoutPlan(name="")
+        with self.assertRaises(ValidationError):
+            plan.full_clean()

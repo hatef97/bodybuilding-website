@@ -1,6 +1,7 @@
 from django.db import models
 
 
+
 class Exercise(models.Model):
     """
     A model for an exercise that can be part of a workout plan.
@@ -42,4 +43,3 @@ class WorkoutLog(models.Model):
 
     def __str__(self):
         return f'{self.user.email} - {self.workout_plan.name} ({self.date})'
-        
