@@ -245,3 +245,88 @@ class WorkoutLogSerializerTests(APITestCase):
         log = serializer.save()
 
         self.assertIsNone(log.notes)
+
+
+
+class UserWorkoutLogSerializerTests(APITestCase):
+    
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            email="loguser@example.com", username="loguser", password="testpass123"
+        )
+        self.exercise = Exercise.objects.create(name="Plank", category="Strength")
+        self.plan = WorkoutPlan.objects.create(name="Core Strength")
+        self.plan.exercises.add(self.exercise)
+        self.expected_date = date.today().strftime("%B %d, %Y")
+        self.log = WorkoutLog.objects.create(
+            user=self.user,
+            workout_plan=self.plan,
+            date=self.expected_date,  
+            duration=30,
+            notes="Core felt solid."
+        )
+
+
+    def test_serializes_correct_fields(self):
+        """Serializer returns the correct renamed fields."""
+        serializer = UserWorkoutLogSerializer(instance=self.log)
+        data = serializer.data
+
+        self.assertIn("workout_plan_name", data)
+        self.assertIn("duration", data)
+        self.assertIn("date", data)
+
+        self.assertEqual(data["workout_plan_name"], "Core Strength")
+        self.assertEqual(data["duration"], 30)
+
+
+    def test_custom_date_formatting(self):
+        """Date is formatted as 'Month DD, YYYY'."""
+        serializer = UserWorkoutLogSerializer(instance=self.log)
+        self.assertEqual(serializer.data["date"], self.expected_date)
+
+
+    def test_read_only_fields_are_ignored_on_input(self):
+        """Input data should not allow setting read-only fields."""
+        input_data = {
+            "user": self.user.pk,
+            "workout_plan": self.plan.pk,
+            "duration": 45,
+            "notes": "test",
+            "date": self.expected_date,  # read-only
+            "id": 9999             # read-only
+        }
+        serializer = WorkoutLogSerializer(data=input_data)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+        validated = serializer.validated_data
+        self.assertNotIn("date", validated)
+        self.assertNotIn("id", validated)
+
+
+    def test_multiple_logs_serialization(self):
+        """Serializer should correctly handle multiple log instances."""
+        log2 = WorkoutLog.objects.create(
+            user=self.user,
+            workout_plan=self.plan,
+            date=date(2024, 2, 1),
+            duration=45
+        )
+        logs = WorkoutLog.objects.filter(user=self.user)
+        serializer = UserWorkoutLogSerializer(logs, many=True)
+        self.assertEqual(len(serializer.data), 2)
+        self.assertEqual(serializer.data[0]["workout_plan_name"], "Core Strength")
+        self.assertIn("date", serializer.data[0])
+
+
+    def test_serializer_with_minimal_data(self):
+        """Should work even if notes are missing."""
+        log = WorkoutLog.objects.create(
+            user=self.user,
+            workout_plan=self.plan,
+            date=self.expected_date,
+            duration=20
+        )
+        serializer = UserWorkoutLogSerializer(instance=log)
+        self.assertEqual(serializer.data["duration"], 20)
+        self.assertEqual(serializer.data["date"], self.expected_date)
