@@ -1,4 +1,4 @@
-from djoser.serializers import UserCreateSerializer
+from djoser.serializers import UserCreateSerializer, UserSerializer
 
 from rest_framework import serializers
 
@@ -37,4 +37,26 @@ class CustomUserCreateSerializer(UserCreateSerializer):
         user.set_password(password)  # Hash password before saving
         user.save()
         return user
+
+
+
+class CustomUserProfileSerializer(UserSerializer):
+    """
+    Custom User Profile Serializer for handling user details (view and update).
+    """
+    class Meta:
+        model = CustomUser
+        fields = ('id', 'email', 'username', 'first_name', 'last_name', 'date_of_birth', 'is_active', 'is_staff', 'date_joined')
+        read_only_fields = ('id', 'email', 'username', 'date_joined')
+
+    def update(self, instance, validated_data):
+        """
+        Override update method to update the user profile.
+        """
+        instance.first_name = validated_data.get('first_name', instance.first_name)
+        instance.last_name = validated_data.get('last_name', instance.last_name)
+        instance.date_of_birth = validated_data.get('date_of_birth', instance.date_of_birth)
+        instance.is_active = validated_data.get('is_active', instance.is_active)
+        instance.save()
+        return instance
         
