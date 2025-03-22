@@ -27,4 +27,19 @@ class WorkoutPlan(models.Model):
 
     def __str__(self):
         return self.name
+
+
+
+class WorkoutLog(models.Model):
+    """
+    A model for tracking individual workout sessions.
+    """
+    user = models.ForeignKey('core.CustomUser', on_delete=models.CASCADE)
+    workout_plan = models.ForeignKey(WorkoutPlan, on_delete=models.CASCADE)
+    date = models.DateField()
+    duration = models.PositiveIntegerField(help_text="Duration of the workout in minutes.")
+    notes = models.TextField(blank=True, null=True)
+
+    def __str__(self):
+        return f'{self.user.email} - {self.workout_plan.name} ({self.date})'
         
