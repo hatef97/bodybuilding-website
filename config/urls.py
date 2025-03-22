@@ -19,7 +19,6 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include('core.urls')),
     path('auth/', include('djoser.urls')),  # 👈 registration, activation, reset, etc.
     path('auth/', include('djoser.urls.authtoken')),  # 👈 login/logout using tokens
 ]

@@ -1,4 +1,4 @@
-from djoser.serializers import UserCreateSerializer, UserSerializer, PasswordChangeSerializer
+from djoser.serializers import UserCreateSerializer, UserSerializer
 
 from rest_framework import serializers
 
@@ -59,40 +59,3 @@ class CustomUserProfileSerializer(UserSerializer):
         instance.is_active = validated_data.get('is_active', instance.is_active)
         instance.save()
         return instance
-
-
-
-class CustomPasswordChangeSerializer(PasswordChangeSerializer):
-    """
-    Custom Password Change Serializer with additional validation.
-    """
-    old_password = serializers.CharField(write_only=True)
-    new_password = serializers.CharField(write_only=True, required=True)
-
-    def validate_new_password(self, value):
-        """
-        Custom validation for the new password (e.g., length requirement).
-        """
-        if len(value) < 8:
-            raise serializers.ValidationError("New password must be at least 8 characters long.")
-        return value
-
-    def validate_old_password(self, value):
-        """
-        Validate the old password. You can add further logic here (e.g., check if password matches).
-        """
-        user = self.context['request'].user
-        if not user.check_password(value):
-            raise serializers.ValidationError("The old password is incorrect.")
-        return value
-
-    def save(self):
-        """
-        Change the password for the user.
-        """
-        user = self.context['request'].user
-        new_password = self.validated_data['new_password']
-        user.set_password(new_password)
-        user.save()
-        return user
-        

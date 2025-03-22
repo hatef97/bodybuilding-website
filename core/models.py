@@ -1,8 +1,9 @@
 from datetime import datetime
 
+from django.utils import timezone
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
-from django.core.exceptions import ValidationError 
+from django.core.exceptions import ValidationError
 
 
 
@@ -38,19 +39,20 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_superuser = models.BooleanField(default=False)  
     is_staff = models.BooleanField(default=False)
-    date_joined = models.DateTimeField(default=datetime.now)
+    date_joined = models.DateTimeField(default=timezone.now)
 
     objects = CustomUserManager()
 
     USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['username']
+    REQUIRED_FIELDS = ['username']  
 
     def __str__(self):
         return self.email
 
     def clean(self):
-        """Ensure that the username is provided."""
+        """Ensure that the email and username are provided."""
         if not self.username:
-            raise ValidationError('The Username field must be set') 
-        super().clean()  # Call parent clean method
-        
+            raise ValidationError('The Username field must be set')
+        if not self.email:
+            raise ValidationError('The Email field must be set')
+        super().clean() 
