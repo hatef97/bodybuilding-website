@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'djoser',
     # My apps
     'core',
+    'workouts',
 ]
 
 MIDDLEWARE = [
