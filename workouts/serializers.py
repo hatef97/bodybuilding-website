@@ -58,7 +58,7 @@ class WorkoutLogSerializer(serializers.ModelSerializer):
     user = serializers.PrimaryKeyRelatedField(queryset=CustomUser.objects.all(), write_only=True)
     workout_plan = serializers.PrimaryKeyRelatedField(queryset=WorkoutPlan.objects.all(), write_only=True)
     duration = serializers.IntegerField(min_value=1)  
-    
+
     class Meta:
         model = WorkoutLog
         fields = ['id', 'user', 'workout_plan', 'date', 'duration', 'notes']
@@ -80,3 +80,26 @@ class WorkoutLogSerializer(serializers.ModelSerializer):
         workout_plan = validated_data['workout_plan']
         log_entry = WorkoutLog.objects.create(**validated_data)
         return log_entry
+
+
+
+class UserWorkoutLogSerializer(serializers.ModelSerializer):
+    """
+    Serializer for aggregating workout logs related to a user.
+    """
+    workout_plan_name = serializers.CharField(source='workout_plan.name', read_only=True)
+    duration = serializers.IntegerField()
+    date = serializers.DateField()
+
+    class Meta:
+        model = WorkoutLog
+        fields = ['workout_plan_name', 'duration', 'date']
+        read_only_fields = ['workout_plan_name', 'duration', 'date']
+
+    def to_representation(self, instance):
+        """
+        Override to_representation to format the data in a user-friendly way.
+        """
+        representation = super().to_representation(instance)
+        representation['date'] = instance.date.strftime('%B %d, %Y')
+        return representation
