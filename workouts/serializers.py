@@ -25,4 +25,26 @@ class ExerciseSerializer(serializers.ModelSerializer):
         if value not in valid_categories:
             raise serializers.ValidationError("Category must be 'Strength' or 'Cardio'.")
         return value
-        
+
+
+
+class WorkoutPlanSerializer(serializers.ModelSerializer):
+    """
+    Serializer for WorkoutPlan model, which includes a list of exercises.
+    """
+    exercises = ExerciseSerializer(many=True)
+
+    class Meta:
+        model = WorkoutPlan
+        fields = ['id', 'name', 'description', 'exercises', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        """
+        Override the create method to handle nested `exercises` and create a `WorkoutPlan` object.
+        """
+        exercises_data = validated_data.pop('exercises')
+        workout_plan = WorkoutPlan.objects.create(**validated_data)
+        for exercise_data in exercises_data:
+            Exercise.objects.create(workout_plan=workout_plan, **exercise_data)
+        return workout_plan
