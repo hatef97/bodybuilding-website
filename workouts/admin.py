@@ -1,6 +1,7 @@
 from django.contrib import admin
+from django.contrib.auth.models import User
 
-from .models import Exercise, WorkoutPlan
+from .models import Exercise, WorkoutPlan, WorkoutLog
 
 
 
@@ -95,6 +96,61 @@ class WorkoutPlanAdmin(admin.ModelAdmin):
         """
         return (obj.description[:50] + '...') if obj.description else 'No description'
     short_description.short_description = 'Description'
+
+
+
+class WorkoutLogAdmin(admin.ModelAdmin):
+    """
+    Admin panel for managing individual workout logs.
+    """
+    # Fields to display in the list view
+    list_display = ('user_email', 'workout_plan_name', 'date', 'duration_in_minutes', 'notes_snippet', 'formatted_date')
+
+    # Fields to filter by in the list view
+    list_filter = ('user', 'workout_plan', 'date')
+
+    # Fields to search by in the list view
+    search_fields = ('user__email', 'workout_plan__name')
+
+    # Number of records per page
+    list_per_page = 20
+
+    # Default ordering for the admin list view
+    ordering = ('-date',)  # Order by date in descending order
+
+    # Display the user email in the list display
+    def user_email(self, obj):
+        return obj.user.email
+    user_email.short_description = 'User Email'
+
+    # Display the workout plan name in the list display
+    def workout_plan_name(self, obj):
+        return obj.workout_plan.name
+    workout_plan_name.short_description = 'Workout Plan Name'
+
+    # Display duration in minutes as a nice readable string
+    def duration_in_minutes(self, obj):
+        return f'{obj.duration} minutes'
+    duration_in_minutes.short_description = 'Duration'
+
+    # Show a truncated version of the notes for quick preview
+    def notes_snippet(self, obj):
+        return obj.notes[:50] + '...' if obj.notes else 'No notes'
+    notes_snippet.short_description = 'Notes'
+
+    # Display the date in a more readable format
+    def formatted_date(self, obj):
+        return obj.date.strftime('%b %d, %Y')  # Display date in a readable format like "Sep 18, 2022"
+    formatted_date.short_description = 'Workout Date'
+
+    # Allow date-based hierarchy for better navigation
+    date_hierarchy = 'date'
+
+    # Inlines for workout plan and user details (optional, could be useful if the WorkoutLog is related to these)
+    def get_inline_instances(self, request, obj=None):
+        if not obj:
+            return []
+        return super().get_inline_instances(request, obj)
 
 
 
