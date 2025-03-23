@@ -104,3 +104,55 @@ class Recipe(models.Model):
 
     def __str__(self):
         return self.name
+
+
+
+class CalorieCalculator(models.Model):
+    """
+    Model for calculating daily calorie requirements.
+    """
+    gender_choices = [
+        ('male', 'Male'),
+        ('female', 'Female')
+    ]
+
+    gender = models.CharField(max_length=10, choices=gender_choices)
+    age = models.PositiveIntegerField()
+    weight = models.FloatField(help_text="Weight in kg")
+    height = models.FloatField(help_text="Height in cm")
+    activity_level = models.CharField(max_length=50, choices=[
+        ('sedentary', 'Sedentary'),
+        ('light_activity', 'Light Activity'),
+        ('moderate_activity', 'Moderate Activity'),
+        ('heavy_activity', 'Heavy Activity')
+    ])
+    goal = models.CharField(max_length=50, choices=[
+        ('lose', 'Lose Weight'),
+        ('maintain', 'Maintain Weight'),
+        ('gain', 'Gain Weight')
+    ])
+
+    class Meta:
+        verbose_name = "Calorie Calculator"
+        verbose_name_plural = "Calorie Calculators"
+
+    def calculate_calories(self):
+        """
+        Simple Harris-Benedict formula for daily caloric requirement calculation.
+        """
+        if self.gender == 'male':
+            bmr = 10 * self.weight + 6.25 * self.height - 5 * self.age + 5
+        else:
+            bmr = 10 * self.weight + 6.25 * self.height - 5 * self.age - 161
+
+        if self.activity_level == 'sedentary':
+            return bmr * 1.2
+        elif self.activity_level == 'light_activity':
+            return bmr * 1.375
+        elif self.activity_level == 'moderate_activity':
+            return bmr * 1.55
+        else:
+            return bmr * 1.725
+
+    def __str__(self):
+        return f'Calorie Calculation for {self.gender} ({self.age} years)'
