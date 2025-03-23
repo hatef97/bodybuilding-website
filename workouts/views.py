@@ -66,7 +66,7 @@ class ExerciseViewSet(viewsets.ModelViewSet):
             queryset = queryset.order_by(ordering)
 
         # Apply select_related and prefetch_related for optimization
-        queryset = queryset.select_related('workout_plan').prefetch_related('categories')
+        queryset = queryset.prefetch_related('workout_plans')
 
         return queryset
 
