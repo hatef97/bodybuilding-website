@@ -1,10 +1,17 @@
+from datetime import date
+
 from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
 
 from django.urls import reverse
+from django.contrib.auth import get_user_model
 
 from workouts.models import *
 from core.models import CustomUser
+
+
+
+User = get_user_model()
 
 
 
@@ -182,3 +189,80 @@ class WorkoutPlanViewSetTests(APITestCase):
         url = reverse("workoutplan-detail", kwargs={"pk": self.plan1.pk})
         response = self.client.delete(url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+
+class WorkoutLogViewSetTests(APITestCase):
+
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            email="admin@example.com", username="admin", password="adminpass", is_staff=True
+        )
+        self.user = User.objects.create_user(
+            email="user@example.com", username="user", password="userpass"
+        )
+        self.exercise = Exercise.objects.create(name="Squat", category="Strength")
+        self.plan = WorkoutPlan.objects.create(name="Leg Day")
+        self.plan.exercises.add(self.exercise)
+        self.log = WorkoutLog.objects.create(
+            user=self.user, workout_plan=self.plan, duration=45, date=date.today()
+        )
+        self.client = APIClient()
+
+
+    def test_authenticated_user_can_list_logs(self):
+        self.client.force_authenticate(user=self.user)
+        url = reverse("workoutlog-list")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+    def test_admin_can_create_log(self):
+        self.client.force_authenticate(user=self.admin)
+        url = reverse("workoutlog-list")
+        data = {
+            "user": self.user.id,
+            "workout_plan": self.plan.id,
+            "duration": 60,
+            "date": str(date.today())
+        }
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+
+    def test_non_admin_cannot_create_log(self):
+        self.client.force_authenticate(user=self.user)
+        url = reverse("workoutlog-list")
+        data = {
+            "user": self.user.id,
+            "workout_plan": self.plan.id,
+            "duration": 30,
+            "date": str(date.today())
+        }
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+    def test_today_logs_returns_today_data(self):
+        self.client.force_authenticate(user=self.user)
+        url = reverse("workoutlog-today-logs")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["duration"], self.log.duration)
+
+
+    def test_user_workout_summary_is_correct(self):
+        self.client.force_authenticate(user=self.user)
+        url = reverse("workoutlog-user-workout-summary")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["total_workouts"], 1)
+        self.assertEqual(response.data["total_duration"], 45)
+
+
+    def test_user_logs_custom_action(self):
+        self.client.force_authenticate(user=self.user)
+        url = reverse("workoutlog-user-logs", kwargs={"pk": self.log.pk})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)

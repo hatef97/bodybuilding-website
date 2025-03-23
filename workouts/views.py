@@ -210,9 +210,9 @@ class WorkoutLogViewSet(viewsets.ModelViewSet):
         Override to optimize and filter the queryset with additional filters and optimizations.
         """
         # Start with the base queryset and apply prefetch for related data.
-        queryset = WorkoutLog.objects.all().select_related('user', 'workout_plan').prefetch_related(
-            'exercises'  # Efficiently prefetch exercises related to workout logs
-        )
+        queryset = WorkoutLog.objects.all()\
+                    .select_related('user', 'workout_plan')\
+                    .prefetch_related('workout_plan__exercises')
 
         # Apply dynamic filters (search, category, etc.)
         queryset = self._apply_filters(queryset)
@@ -220,6 +220,23 @@ class WorkoutLogViewSet(viewsets.ModelViewSet):
         # Return the optimized queryset
         return queryset
 
+    def _apply_filters(self, queryset):
+        """
+        Apply optional search and ordering filters to the queryset.
+        """
+        search_query = self.request.query_params.get('search')
+        if search_query:
+            queryset = queryset.filter(
+                Q(workout_plan__name__icontains=search_query) |
+                Q(user__email__icontains=search_query)
+            )
+
+        ordering = self.request.query_params.get('ordering')
+        if ordering:
+            queryset = queryset.order_by(*ordering.split(','))
+
+        return queryset
+    
     def perform_create(self, serializer):
         """
         Override the create method to automatically associate the log with the current user.

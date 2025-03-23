@@ -12,7 +12,7 @@ router = DefaultRouter()
 # Register your viewsets with appropriate routes
 router.register(r'workout-plans', WorkoutPlanViewSet, basename='workoutplan')
 router.register(r'exercises', ExerciseViewSet, basename='exercise')
-router.register(r'workout-logs', WorkoutLogViewSet, basename='workout-log')
+router.register(r'workout-logs', WorkoutLogViewSet, basename='workoutlog')
 
 # Include the router-generated URLs in your app's URL configuration
 urlpatterns = [
