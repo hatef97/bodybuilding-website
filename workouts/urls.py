@@ -10,7 +10,7 @@ from .views import ExerciseViewSet, WorkoutPlanViewSet, WorkoutLogViewSet
 router = DefaultRouter()
 
 # Register your viewsets with appropriate routes
-router.register(r'workout-plans', WorkoutPlanViewSet, basename='workout-plan')
+router.register(r'workout-plans', WorkoutPlanViewSet, basename='workoutplan')
 router.register(r'exercises', ExerciseViewSet, basename='exercise')
 router.register(r'workout-logs', WorkoutLogViewSet, basename='workout-log')
 

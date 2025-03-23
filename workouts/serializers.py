@@ -34,7 +34,9 @@ class WorkoutPlanSerializer(serializers.ModelSerializer):
     """
     Serializer for WorkoutPlan model, which includes a list of exercises.
     """
-    exercises = ExerciseSerializer(many=True)
+    exercises = serializers.PrimaryKeyRelatedField(
+    many=True, queryset=Exercise.objects.all()
+    )   
 
     class Meta:
         model = WorkoutPlan
@@ -45,13 +47,10 @@ class WorkoutPlanSerializer(serializers.ModelSerializer):
         """
         Override the create method to handle nested `exercises` and create a `WorkoutPlan` object.
         """
-        exercises_data = validated_data.pop('exercises')
+        exercises = validated_data.pop('exercises', [])
         workout_plan = WorkoutPlan.objects.create(**validated_data)
-        for exercise_data in exercises_data:
-            exercise = Exercise.objects.create(**exercise_data)
-            workout_plan.exercises.add(exercise)
+        workout_plan.exercises.set(exercises) 
         return workout_plan
-
 
 
 class WorkoutLogSerializer(serializers.ModelSerializer):

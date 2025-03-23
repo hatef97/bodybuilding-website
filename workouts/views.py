@@ -96,7 +96,7 @@ class WorkoutPlanViewSet(viewsets.ModelViewSet):
         """
         Override to optimize and filter the queryset with additional filters and optimizations.
         """
-        queryset = super().get_queryset()  # Start with the base queryset
+        queryset = WorkoutPlan.objects.all()  # Start with the base queryset
 
         # Apply dynamic filters (search, category, etc.)
         queryset = self._apply_filters(queryset)

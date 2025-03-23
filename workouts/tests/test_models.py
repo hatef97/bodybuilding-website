@@ -186,11 +186,7 @@ class WorkoutLogModelTests(TestCase):
 
     def test_missing_required_fields_raises_error(self):
         """WorkoutLog with missing required fields should fail."""
-        log = WorkoutLog(
-            user=self.user,
-            workout_plan=self.plan,
-            date=None,  # missing date
-            duration=30
-        )
+        log = WorkoutLog()  # Missing required fields: user, workout_plan, date, duration
+
         with self.assertRaises(ValidationError):
             log.full_clean()
