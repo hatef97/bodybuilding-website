@@ -157,3 +157,4 @@ class WorkoutLogAdmin(admin.ModelAdmin):
 # Register the Exercise model with the custom ExerciseAdmin
 admin.site.register(Exercise, ExerciseAdmin)
 admin.site.register(WorkoutPlan, WorkoutPlanAdmin)
+admin.site.register(WorkoutLog, WorkoutLogAdmin)
