@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Exercise
+from .models import Exercise, WorkoutPlan
 
 
 
@@ -55,5 +55,49 @@ class ExerciseAdmin(admin.ModelAdmin):
 
 
 
+class WorkoutPlanAdmin(admin.ModelAdmin):
+    """
+    Admin panel for managing workout plans.
+    """
+    # Fields to display in the list view
+    list_display = ('name', 'created_at', 'updated_at', 'exercise_count', 'short_description')
+    
+    # Fields to filter by in the list view
+    list_filter = ('created_at', 'updated_at')
+    
+    # Fields to search by in the list view
+    search_fields = ('name', 'description')
+    
+    # Enable pagination
+    list_per_page = 20
+    
+    # Enable ordering by name or created_at
+    ordering = ('created_at',)
+    
+    # Enable date hierarchy for easy navigation by created date
+    date_hierarchy = 'created_at'
+    
+    # Show exercises in a horizontal filter (Many-to-Many relationship)
+    filter_horizontal = ('exercises',)
+    
+    # Custom action to get the number of exercises in each plan
+    def exercise_count(self, obj):
+        """
+        Custom method to get the count of exercises in a workout plan.
+        """
+        return obj.exercises.count()
+    exercise_count.short_description = 'Number of Exercises'  # Column name in the admin
+    
+    # Custom method to shorten description
+    def short_description(self, obj):
+        """
+        Custom method to display a shortened version of the description in the list view.
+        """
+        return (obj.description[:50] + '...') if obj.description else 'No description'
+    short_description.short_description = 'Description'
+
+
+
 # Register the Exercise model with the custom ExerciseAdmin
 admin.site.register(Exercise, ExerciseAdmin)
+admin.site.register(WorkoutPlan, WorkoutPlanAdmin)
