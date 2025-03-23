@@ -65,3 +65,21 @@ class MealPlan(models.Model):
         Calculate the total fats for the meal plan.
         """
         return sum(meal.fats for meal in self.meals.all())
+
+
+
+class MealInMealPlan(models.Model):
+    """
+    An intermediary model for many-to-many relationship between MealPlan and Meal.
+    Includes ordering for meals in a plan.
+    """
+    meal_plan = models.ForeignKey(MealPlan, on_delete=models.CASCADE)
+    meal = models.ForeignKey(Meal, on_delete=models.CASCADE)
+    order = models.PositiveIntegerField(help_text="The order of this meal in the plan")
+
+    class Meta:
+        ordering = ['order']
+        unique_together = ['meal_plan', 'meal']
+
+    def __str__(self):
+        return f"{self.meal.name} in {self.meal_plan.name}"
