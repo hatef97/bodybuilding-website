@@ -83,3 +83,24 @@ class MealInMealPlan(models.Model):
 
     def __str__(self):
         return f"{self.meal.name} in {self.meal_plan.name}"
+
+
+
+class Recipe(models.Model):
+    """
+    Recipe model to store recipe information.
+    """
+    name = models.CharField(max_length=255)
+    ingredients = models.TextField(help_text="List of ingredients")
+    instructions = models.TextField(help_text="Preparation steps")
+    calories = models.PositiveIntegerField()
+    protein = models.DecimalField(max_digits=5, decimal_places=2)
+    carbs = models.DecimalField(max_digits=5, decimal_places=2)
+    fats = models.DecimalField(max_digits=5, decimal_places=2)
+
+    class Meta:
+        verbose_name = "Recipe"
+        verbose_name_plural = "Recipes"
+
+    def __str__(self):
+        return self.name
