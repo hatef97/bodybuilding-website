@@ -243,4 +243,137 @@ class MealPlanModelTests(TestCase):
         # Try to call full_clean to trigger validation
         with self.assertRaises(ValidationError):
             meal_plan.full_clean() 
-            
+
+
+
+class MealInMealPlanModelTests(TestCase):
+
+    def setUp(self):
+        """
+        Set up initial test data for MealInMealPlan.
+        """
+        # Create some sample meals
+        self.meal_1 = Meal.objects.create(
+            name="Chicken Salad",
+            calories=400,
+            protein=Decimal('35.00'),
+            carbs=Decimal('10.00'),
+            fats=Decimal('15.00'),
+            description="A healthy chicken salad."
+        )
+        self.meal_2 = Meal.objects.create(
+            name="Grilled Salmon",
+            calories=500,
+            protein=Decimal('40.00'),
+            carbs=Decimal('5.00'),
+            fats=Decimal('25.00'),
+            description="Grilled salmon with vegetables."
+        )
+        # Create a Meal Plan
+        self.meal_plan = MealPlan.objects.create(
+            name="Bulking Meal Plan",
+            goal="bulking"
+        )
+
+
+    def test_create_meal_in_meal_plan(self):
+        """
+        Test that a MealInMealPlan instance can be created correctly.
+        """
+        # Create the MealInMealPlan instance with an order
+        meal_in_plan = MealInMealPlan.objects.create(
+            meal_plan=self.meal_plan,
+            meal=self.meal_1,
+            order=1
+        )
+
+        # Check if the instance was created successfully
+        self.assertEqual(meal_in_plan.meal_plan, self.meal_plan)
+        self.assertEqual(meal_in_plan.meal, self.meal_1)
+        self.assertEqual(meal_in_plan.order, 1)
+
+
+    def test_ordering_of_meals_in_plan(self):
+        """
+        Test that the meals are ordered correctly in the meal plan.
+        """
+        # Create the MealInMealPlan instances
+        meal_in_plan_1 = MealInMealPlan.objects.create(
+            meal_plan=self.meal_plan,
+            meal=self.meal_1,
+            order=1
+        )
+        meal_in_plan_2 = MealInMealPlan.objects.create(
+            meal_plan=self.meal_plan,
+            meal=self.meal_2,
+            order=2
+        )
+
+        # Retrieve the meal plan and check the order of meals
+        meal_plan = MealPlan.objects.get(id=self.meal_plan.id)
+        meal_in_meal_plan = meal_plan.meals.all().order_by('mealinmealplan__order')
+
+        self.assertEqual(meal_in_meal_plan[0], self.meal_1)
+        self.assertEqual(meal_in_meal_plan[1], self.meal_2)
+
+
+    def test_unique_together_constraint(self):
+        """
+        Test that the same meal cannot be added twice to the same meal plan.
+        """
+        # Create the MealInMealPlan instance
+        MealInMealPlan.objects.create(
+            meal_plan=self.meal_plan,
+            meal=self.meal_1,
+            order=1
+        )
+
+        # Attempt to create the same meal in the same meal plan again
+        with self.assertRaises(Exception):  # Should raise an IntegrityError due to unique_together constraint
+            MealInMealPlan.objects.create(
+                meal_plan=self.meal_plan,
+                meal=self.meal_1,
+                order=2
+            )
+
+
+    def test_str_method(self):
+        """
+        Test the string representation of the MealInMealPlan model.
+        """
+        # Create the MealInMealPlan instance
+        meal_in_plan = MealInMealPlan.objects.create(
+            meal_plan=self.meal_plan,
+            meal=self.meal_1,
+            order=1
+        )
+
+        # Check the string representation
+        self.assertEqual(str(meal_in_plan), "Chicken Salad in Bulking Meal Plan")
+
+
+    def test_meal_plan_total_calories_with_meals(self):
+        """
+        Test that adding meals to a plan updates the total calories correctly.
+        """
+        # Add meals to the meal plan
+        self.meal_plan.meals.add(self.meal_1, through_defaults={'order': 1})
+        self.meal_plan.meals.add(self.meal_2, through_defaults={'order': 2})
+
+        # Check if the total calories are correctly calculated
+        self.assertEqual(self.meal_plan.total_calories(), 400 + 500)  # Total calories should be sum of meal calories
+
+
+    def test_meal_plan_total_macronutrients_with_meals(self):
+        """
+        Test that adding meals to a plan updates the total macronutrients correctly.
+        """
+        # Add meals to the meal plan
+        self.meal_plan.meals.add(self.meal_1, through_defaults={'order': 1})
+        self.meal_plan.meals.add(self.meal_2, through_defaults={'order': 2})
+
+        # Check if the total macronutrients are correctly calculated
+        self.assertEqual(self.meal_plan.total_protein(), Decimal('35.00') + Decimal('40.00'))
+        self.assertEqual(self.meal_plan.total_carbs(), Decimal('10.00') + Decimal('5.00'))
+        self.assertEqual(self.meal_plan.total_fats(), Decimal('15.00') + Decimal('25.00'))
+        
