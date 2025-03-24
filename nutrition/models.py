@@ -89,7 +89,7 @@ class MealInMealPlan(models.Model):
     """
     meal_plan = models.ForeignKey(MealPlan, on_delete=models.CASCADE)
     meal = models.ForeignKey(Meal, on_delete=models.CASCADE)
-    order = models.PositiveIntegerField(help_text="The order of this meal in the plan")
+    order = models.PositiveIntegerField(default=1, help_text="The order of this meal in the plan")
 
     class Meta:
         ordering = ['order']
