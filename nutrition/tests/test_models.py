@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.test import TestCase
 from django.core.exceptions import ValidationError
 
-from nutrition.models import Meal, MealPlan, MealInMealPlan
+from nutrition.models import Meal, MealPlan, MealInMealPlan, Recipe
 
 
 
@@ -376,4 +376,152 @@ class MealInMealPlanModelTests(TestCase):
         self.assertEqual(self.meal_plan.total_protein(), Decimal('35.00') + Decimal('40.00'))
         self.assertEqual(self.meal_plan.total_carbs(), Decimal('10.00') + Decimal('5.00'))
         self.assertEqual(self.meal_plan.total_fats(), Decimal('15.00') + Decimal('25.00'))
-        
+
+
+
+class RecipeModelTests(TestCase):
+    
+    def setUp(self):
+        """
+        Set up initial test data for the Recipe model.
+        """
+        # Create a sample recipe
+        self.recipe_1 = Recipe.objects.create(
+            name="Chicken Stir Fry",
+            ingredients="Chicken, Soy Sauce, Vegetables, Garlic, Ginger",
+            instructions="Cook chicken, stir-fry with vegetables, add soy sauce.",
+            calories=350,
+            protein=25.50,
+            carbs=30.00,
+            fats=10.00
+        )
+
+
+    def test_create_recipe(self):
+        """
+        Test that a Recipe instance can be created with valid data.
+        """
+        recipe = self.recipe_1
+        self.assertEqual(recipe.name, "Chicken Stir Fry")
+        self.assertEqual(recipe.ingredients, "Chicken, Soy Sauce, Vegetables, Garlic, Ginger")
+        self.assertEqual(recipe.instructions, "Cook chicken, stir-fry with vegetables, add soy sauce.")
+        self.assertEqual(recipe.calories, 350)
+        self.assertEqual(recipe.protein, Decimal('25.50'))
+        self.assertEqual(recipe.carbs, Decimal('30.00'))
+        self.assertEqual(recipe.fats, Decimal('10.00'))
+
+
+    def test_str_method(self):
+        """
+        Test the string representation of the Recipe model.
+        """
+        recipe = self.recipe_1
+        self.assertEqual(str(recipe), "Chicken Stir Fry")
+
+
+    def test_positive_calories(self):
+        """
+        Test that calories should be positive.
+        """
+        recipe = Recipe(name="Test Recipe", ingredients="Test Ingredients", instructions="Test Instructions",
+                        calories=500, protein=25.5, carbs=50.0, fats=15.0)
+        recipe.save()
+        self.assertGreater(recipe.calories, 0, "Calories must be a positive number.")
+
+
+    def test_positive_protein(self):
+        """
+        Test that protein should be positive.
+        """
+        recipe = Recipe(name="Test Recipe", ingredients="Test Ingredients", instructions="Test Instructions",
+                        calories=500, protein=20.0, carbs=50.0, fats=15.0)
+        recipe.save()
+        self.assertGreater(recipe.protein, 0, "Protein must be a positive number.")
+
+
+    def test_positive_carbs(self):
+        """
+        Test that carbs should be positive.
+        """
+        recipe = Recipe(name="Test Recipe", ingredients="Test Ingredients", instructions="Test Instructions",
+                        calories=500, protein=20.0, carbs=30.0, fats=15.0)
+        recipe.save()
+        self.assertGreater(recipe.carbs, 0, "Carbs must be a positive number.")
+
+
+    def test_positive_fats(self):
+        """
+        Test that fats should be positive.
+        """
+        recipe = Recipe(name="Test Recipe", ingredients="Test Ingredients", instructions="Test Instructions",
+                        calories=500, protein=20.0, carbs=30.0, fats=10.0)
+        recipe.save()
+        self.assertGreater(recipe.fats, 0, "Fats must be a positive number.")
+
+
+    def test_invalid_negative_calories(self):
+        """
+        Test that negative calories raise an error.
+        """
+        recipe = Recipe(
+            name="Test Invalid Recipe",
+            ingredients="Test Ingredients",
+            instructions="Test Instructions",
+            calories=-1,  # Negative value
+            protein=20.0,
+            carbs=30.0,
+            fats=10.0
+        )
+        with self.assertRaises(ValidationError):
+            recipe.clean() 
+
+
+    def test_invalid_negative_protein(self):
+        """
+        Test that negative protein raises an error.
+        """
+        recipe = Recipe(
+            name="Test Invalid Recipe",
+            ingredients="Test Ingredients",
+            instructions="Test Instructions",
+            calories=500,
+            protein=-5.0,  # Negative value
+            carbs=30.0,
+            fats=10.0
+        )
+        with self.assertRaises(ValidationError):
+            recipe.clean() 
+
+
+    def test_invalid_negative_carbs(self):
+        """
+        Test that negative carbs raise an error.
+        """
+        recipe = Recipe(
+            name="Test Invalid Recipe",
+            ingredients="Test Ingredients",
+            instructions="Test Instructions",
+            calories=500,
+            protein=20.0,
+            carbs=-5.0,  # Negative value
+            fats=10.0
+        )
+        with self.assertRaises(ValidationError):
+            recipe.clean()
+
+
+    def test_invalid_negative_fats(self):
+    #     """
+    #     Test that negative fats raise an error.
+    #     """
+        recipe = Recipe(
+            name="Test Invalid Recipe",
+            ingredients="Test Ingredients",
+            instructions="Test Instructions",
+            calories=500,
+            protein=20.0,
+            carbs=30.0,
+            fats=-5.0  # Negative value
+        )
+        with self.assertRaises(ValidationError):
+            recipe.clean() 

@@ -119,6 +119,19 @@ class Recipe(models.Model):
     def __str__(self):
         return self.name
 
+    def clean(self):
+        """
+        Custom clean method to ensure all values are positive.
+        """
+        if self.calories < 0:
+            raise ValidationError("Calories must be a positive value.")
+        if self.protein < 0:
+            raise ValidationError("Protein must be a positive value.")
+        if self.carbs < 0:
+            raise ValidationError("Carbs must be a positive value.")
+        if self.fats < 0:
+            raise ValidationError("Fats must be a positive value.")
+            
 
 
 class CalorieCalculator(models.Model):
