@@ -142,26 +142,52 @@ class CalorieCalculator(models.Model):
         ('male', 'Male'),
         ('female', 'Female')
     ]
+    
+    goal_choices = [
+        ('lose', 'Lose Weight'),
+        ('maintain', 'Maintain Weight'),
+        ('gain', 'Gain Weight')
+    ]
+    
+    activity_level_choices = [
+        ('sedentary', 'Sedentary'),
+        ('light_activity', 'Light Activity'),
+        ('moderate_activity', 'Moderate Activity'),
+        ('heavy_activity', 'Heavy Activity')
+    ]
 
     gender = models.CharField(max_length=10, choices=gender_choices)
     age = models.PositiveIntegerField()
     weight = models.FloatField(help_text="Weight in kg")
     height = models.FloatField(help_text="Height in cm")
-    activity_level = models.CharField(max_length=50, choices=[
-        ('sedentary', 'Sedentary'),
-        ('light_activity', 'Light Activity'),
-        ('moderate_activity', 'Moderate Activity'),
-        ('heavy_activity', 'Heavy Activity')
-    ])
-    goal = models.CharField(max_length=50, choices=[
-        ('lose', 'Lose Weight'),
-        ('maintain', 'Maintain Weight'),
-        ('gain', 'Gain Weight')
-    ])
+    activity_level = models.CharField(max_length=50, choices=activity_level_choices)
+    goal = models.CharField(max_length=50, choices=goal_choices)
 
     class Meta:
         verbose_name = "Calorie Calculator"
         verbose_name_plural = "Calorie Calculators"
+
+    def clean(self):
+        """
+        Ensure that the goal, gender, activity level, age, weight, and height are valid choices.
+        """
+        # Validate goal, gender, and activity level
+        if self.goal not in [choice[0] for choice in self.goal_choices]:
+            raise ValidationError(f"Invalid goal: {self.goal}. Choose one of: 'lose', 'maintain', 'gain'.")
+        
+        if self.gender not in [choice[0] for choice in self.gender_choices]:
+            raise ValidationError(f"Invalid gender: {self.gender}. Choose either 'male' or 'female'.")
+        
+        if self.activity_level not in [choice[0] for choice in self.activity_level_choices]:
+            raise ValidationError(f"Invalid activity level: {self.activity_level}. Choose from 'sedentary', 'light_activity', 'moderate_activity', 'heavy_activity'.")
+        
+        # Validate age, weight, and height to ensure they are non-negative
+        if self.age <= 0:
+            raise ValidationError("Age must be a positive number.")
+        if self.weight <= 0:
+            raise ValidationError("Weight must be a positive number.")
+        if self.height <= 0:
+            raise ValidationError("Height must be a positive number.")
 
     def calculate_calories(self):
         """
@@ -183,3 +209,4 @@ class CalorieCalculator(models.Model):
 
     def __str__(self):
         return f'Calorie Calculation for {self.gender} ({self.age} years)'
+        

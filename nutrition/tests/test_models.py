@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.test import TestCase
 from django.core.exceptions import ValidationError
 
-from nutrition.models import Meal, MealPlan, MealInMealPlan, Recipe
+from nutrition.models import Meal, MealPlan, MealInMealPlan, Recipe, CalorieCalculator
 
 
 
@@ -525,3 +525,229 @@ class RecipeModelTests(TestCase):
         )
         with self.assertRaises(ValidationError):
             recipe.clean() 
+
+
+
+class CalorieCalculatorTests(TestCase):
+    
+    def setUp(self):
+        """
+        Set up test data for the CalorieCalculator model.
+        """
+        self.calculator_1 = CalorieCalculator.objects.create(
+            gender='male',
+            age=30,
+            weight=75.0,
+            height=175.0,
+            activity_level='moderate_activity',
+            goal='maintain'
+        )
+        self.calculator_2 = CalorieCalculator.objects.create(
+            gender='female',
+            age=25,
+            weight=65.0,
+            height=160.0,
+            activity_level='light_activity',
+            goal='gain'
+        )
+        self.calculator_3 = CalorieCalculator.objects.create(
+            gender='male',
+            age=45,
+            weight=85.0,
+            height=180.0,
+            activity_level='sedentary',
+            goal='lose'
+        )
+
+
+    def test_calories_for_male_moderate_activity(self):
+        """
+        Test if the caloric calculation works for a male with moderate activity level.
+        """
+        # Correct expected calculation
+        expected_calories = 1698.75 * 1.55  # 1698.75 is the BMR for the given inputs
+        
+        # Assert that the calculated calories are correct
+        self.assertEqual(self.calculator_1.calculate_calories(), expected_calories)
+
+
+    def test_calories_for_female_light_activity(self):
+        """
+        Test if the caloric calculation works for a female with light activity level.
+        """
+        expected_calories = self.calculator_2.calculate_calories()
+        self.assertEqual(expected_calories, (65.0 * 10 + 6.25 * 160.0 - 5 * 25 - 161) * 1.375)  # Expected formula for female BMR * activity multiplier
+
+
+    def test_calories_for_male_sedentary(self):
+        """
+        Test if the caloric calculation works for a male with sedentary activity level.
+        """
+        expected_calories = self.calculator_3.calculate_calories()
+        self.assertEqual(expected_calories, (85.0 * 10 + 6.25 * 180.0 - 5 * 45 + 5) * 1.2)  # Expected formula for male BMR * activity multiplier
+
+
+    def test_calories_for_invalid_gender(self):
+        """
+        Test if an invalid gender raises an exception.
+        """
+        # Create a CalorieCalculator object with an invalid gender value
+        calorie_calculator = CalorieCalculator(
+            gender='invalid_gender',  # Invalid gender
+            age=30,
+            weight=75.0,
+            height=175.0,
+            activity_level='moderate_activity',
+            goal='maintain'
+        )
+        
+        # Check that the ValidationError is raised when we try to validate the object
+        with self.assertRaises(ValidationError):
+            calorie_calculator.clean()
+
+
+    def test_calories_for_invalid_activity_level(self):
+        """
+        Test if an invalid activity level raises an exception.
+        """
+        # Create a CalorieCalculator object with an invalid activity level
+        calorie_calculator = CalorieCalculator(
+            gender='male',
+            age=30,
+            weight=75.0,
+            height=175.0,
+            activity_level='invalid_activity',  # Invalid activity level
+            goal='maintain'
+        )
+        
+        # Check that the ValidationError is raised when we try to validate the object
+        with self.assertRaises(ValidationError):
+            calorie_calculator.clean()
+
+
+    def test_calories_for_invalid_goal(self):
+        """
+        Test if an invalid goal raises an exception.
+        """
+        # Creating an invalid goal, "build", which is not in the list of valid goals
+        calorie_calculator = CalorieCalculator(
+            gender='male',
+            age=30,
+            weight=75.0,
+            height=175.0,
+            activity_level='moderate_activity',
+            goal='build'  # Invalid goal
+        )
+        
+        # Check that the ValidationError is raised when we try to save the object
+        with self.assertRaises(ValidationError):
+            calorie_calculator.clean()
+
+
+    def test_calories_for_negative_values(self):
+        """
+        Test if negative values for weight, height, or age raise validation errors.
+        """
+        # Test negative age
+        calorie_calculator = CalorieCalculator(
+            gender='male',
+            age=-30,
+            weight=75.0,
+            height=175.0,
+            activity_level='moderate_activity',
+            goal='maintain'
+        )
+        with self.assertRaises(ValidationError):
+            calorie_calculator.clean()  # This should raise a ValidationError
+
+        # Test negative weight
+        calorie_calculator = CalorieCalculator(
+            gender='male',
+            age=30,
+            weight=-75.0,
+            height=175.0,
+            activity_level='moderate_activity',
+            goal='maintain'
+        )
+        with self.assertRaises(ValidationError):
+            calorie_calculator.clean()  # This should raise a ValidationError
+
+        # Test negative height
+        calorie_calculator = CalorieCalculator(
+            gender='male',
+            age=30,
+            weight=75.0,
+            height=-175.0,
+            activity_level='moderate_activity',
+            goal='maintain'
+        )
+        with self.assertRaises(ValidationError):
+            calorie_calculator.clean()  # This should raise a ValidationError
+
+
+    def test_calorie_calculation_for_maintenance_goal(self):
+        """
+        Test if the correct number of calories are returned for a maintenance goal.
+        """
+        # Expected calculation for maintenance goal using Harris-Benedict formula:
+        bmr = 10 * 75.0 + 6.25 * 175.0 - 5 * 30 + 5  # BMR for male = 10 * weight + 6.25 * height - 5 * age + 5
+        maintenance_calories = bmr * 1.55  # BMR * activity factor for moderate activity
+
+        # Check that the calculated calories match the expected value
+        self.assertEqual(self.calculator_1.calculate_calories(), maintenance_calories)
+
+
+    def test_calorie_calculation_for_gain_goal(self):
+        """
+        Test if the correct number of calories are returned for a gain goal.
+        """
+        # Expected BMR calculation for a female with the given weight, height, and age using the Harris-Benedict formula
+        bmr = 10 * 65.0 + 6.25 * 160.0 - 5 * 25 - 161  # BMR for female = 10 * weight + 6.25 * height - 5 * age - 161
+        gain_calories = bmr * 1.375  # BMR * activity factor for light activity (gain weight goal)
+
+        # Check that the calculated calories match the expected value for the "gain" goal
+        self.assertEqual(self.calculator_2.calculate_calories(), gain_calories)
+
+
+    def test_calorie_calculation_for_lose_goal(self):
+        """
+        Test if the correct number of calories are returned for a lose goal.
+        """
+        # Expected BMR calculation for a male with the given weight, height, and age using the Harris-Benedict formula
+        bmr = 10 * 85.0 + 6.25 * 180.0 - 5 * 45 + 5  # BMR for male = 10 * weight + 6.25 * height - 5 * age + 5
+        lose_calories = bmr * 1.2  # BMR * activity factor for sedentary (lose weight goal)
+
+        # Check that the calculated calories match the expected value for the "lose" goal
+        self.assertEqual(self.calculator_3.calculate_calories(), lose_calories)
+
+
+    def test_calorie_calculation_for_different_ages(self):
+        """
+        Test if calorie calculation adjusts for different ages.
+        """
+        calculator_4 = CalorieCalculator.objects.create(
+            gender='female',
+            age=50,
+            weight=60.0,
+            height=160.0,
+            activity_level='light_activity',
+            goal='maintain'
+        )
+        expected_calories = (60.0 * 10 + 6.25 * 160.0 - 5 * 50 - 161) * 1.375
+        self.assertEqual(calculator_4.calculate_calories(), expected_calories)
+
+
+    def test_calorie_calculation_for_different_heights(self):
+        """
+        Test if calorie calculation adjusts for different heights.
+        """
+        calculator_5 = CalorieCalculator.objects.create(
+            gender='male',
+            age=25,
+            weight=70.0,
+            height=190.0,  # Taller height
+            activity_level='moderate_activity',
+            goal='gain'
+        )
+        expected_calories = (70.0 * 10 + 6.25 * 190.0 - 5 * 25 + 5) * 1.55
+        self.assertEqual(calculator_5.calculate_calories(), expected_calories)
