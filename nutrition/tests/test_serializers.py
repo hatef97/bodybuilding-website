@@ -638,3 +638,176 @@ class RecipeSerializerTests(APITestCase):
         serializer = RecipeSerializer(data=data)
         self.assertFalse(serializer.is_valid())  # The serializer should be invalid due to missing 'fats'
         self.assertIn('fats', serializer.errors)  # Ensure the 'fats' field is in the errors
+
+
+
+class CalorieCalculatorSerializerTests(APITestCase):
+    
+    def setUp(self):
+        """
+        Set up initial data for tests.
+        """
+        # Create a sample calorie calculator instance
+        self.calorie_calculator_data = {
+            'gender': 'male',
+            'age': 30,
+            'weight': 75.0,
+            'height': 180.0,
+            'activity_level': 'moderate_activity',
+            'goal': 'maintain'
+        }
+        self.calorie_calculator = CalorieCalculator.objects.create(**self.calorie_calculator_data)
+        
+
+    def test_calorie_calculator_serializer_valid_data(self):
+        """
+        Test that the serializer correctly serializes valid data.
+        """
+        # Create a serializer instance
+        serializer = CalorieCalculatorSerializer(self.calorie_calculator)
+        
+        # Serialize the data
+        data = serializer.data
+        
+        # Check the serialized data
+        self.assertEqual(data['gender'], self.calorie_calculator_data['gender'])
+        self.assertEqual(data['age'], self.calorie_calculator_data['age'])
+        self.assertEqual(data['weight'], self.calorie_calculator_data['weight'])
+        self.assertEqual(data['height'], self.calorie_calculator_data['height'])
+        self.assertEqual(data['activity_level'], self.calorie_calculator_data['activity_level'])
+        self.assertEqual(data['goal'], self.calorie_calculator_data['goal'])
+    
+
+    def test_calorie_calculator_serializer_invalid_age(self):
+        """
+        Test that invalid age raises a validation error.
+        """
+        data = self.calorie_calculator_data.copy()
+        data['age'] = -1  # Invalid age
+        
+        serializer = CalorieCalculatorSerializer(data=data)
+        
+        # Check if the serializer is invalid
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('age', serializer.errors)
+        self.assertEqual(serializer.errors['age'][0], 'This field must be a positive value.')
+    
+
+    def test_calorie_calculator_serializer_invalid_weight(self):
+        """
+        Test that invalid weight raises a validation error.
+        """
+        data = self.calorie_calculator_data.copy()
+        data['weight'] = -50.0  # Invalid weight
+        
+        serializer = CalorieCalculatorSerializer(data=data)
+        
+        # Check if the serializer is invalid
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('weight', serializer.errors)
+        self.assertEqual(serializer.errors['weight'][0], 'This field must be a positive value.')
+    
+
+    def test_calorie_calculator_serializer_invalid_height(self):
+        """
+        Test that invalid height raises a validation error.
+        """
+        data = self.calorie_calculator_data.copy()
+        data['height'] = -150.0  # Invalid height
+        
+        serializer = CalorieCalculatorSerializer(data=data)
+        
+        # Check if the serializer is invalid
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('height', serializer.errors)
+        self.assertEqual(serializer.errors['height'][0], 'This field must be a positive value.')
+    
+
+    def test_calorie_calculator_serializer_invalid_gender(self):
+        """
+        Test that an invalid gender raises a validation error.
+        """
+        data = self.calorie_calculator_data.copy()
+        data['gender'] = 'invalid_gender'  # Invalid gender
+        
+        serializer = CalorieCalculatorSerializer(data=data)
+        
+        # Check if the serializer is invalid
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('gender', serializer.errors)
+        self.assertEqual(serializer.errors['gender'][0], '"invalid_gender" is not a valid choice.')
+
+
+    def test_calorie_calculator_calculate_calories(self):
+        """
+        Test that the calorie calculation is correct based on the Harris-Benedict formula.
+        """
+        # Create a new calorie calculator instance
+        calorie_calculator = CalorieCalculator.objects.create(
+            gender='male',
+            age=30,
+            weight=75.0,
+            height=180.0,
+            activity_level='moderate_activity',
+            goal='maintain'
+        )
+        
+        # Calculate expected calories using the Harris-Benedict formula
+        expected_bmr = 10 * calorie_calculator.weight + 6.25 * calorie_calculator.height - 5 * calorie_calculator.age + 5
+        expected_calories = expected_bmr * 1.55  # Moderate activity multiplier
+        
+        # Create serializer instance
+        serializer = CalorieCalculatorSerializer(calorie_calculator)
+        
+        # Check if the calculated calories match the expected value
+        self.assertEqual(serializer.calculate_calories(calorie_calculator), expected_calories)
+
+
+    def test_calorie_calculator_serializer_missing_required_fields(self):
+        """
+        Test that missing required fields raise validation errors.
+        """
+        data = {
+            'gender': 'male',
+            # Missing required fields: age, weight, height, activity_level, goal
+        }
+        
+        serializer = CalorieCalculatorSerializer(data=data)
+        
+        # Check if the serializer is invalid due to missing required fields
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('age', serializer.errors)
+        self.assertIn('weight', serializer.errors)
+        self.assertIn('height', serializer.errors)
+        self.assertIn('activity_level', serializer.errors)
+        self.assertIn('goal', serializer.errors)
+
+
+    def test_calorie_calculator_serializer_invalid_goal(self):
+        """
+        Test that an invalid goal raises a validation error.
+        """
+        data = self.calorie_calculator_data.copy()
+        data['goal'] = 'invalid_goal'  # Invalid goal
+        
+        serializer = CalorieCalculatorSerializer(data=data)
+        
+        # Check if the serializer is invalid
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('goal', serializer.errors)
+        self.assertEqual(serializer.errors['goal'][0], '"invalid_goal" is not a valid choice.')
+
+
+    def test_calorie_calculator_serializer_invalid_activity_level(self):
+        """
+        Test that an invalid activity level raises a validation error.
+        """
+        data = self.calorie_calculator_data.copy()
+        data['activity_level'] = 'invalid_activity_level'  # Invalid activity level
+        
+        serializer = CalorieCalculatorSerializer(data=data)
+        
+        # Check if the serializer is invalid
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('activity_level', serializer.errors)
+        self.assertEqual(serializer.errors['activity_level'][0], '"invalid_activity_level" is not a valid choice.')
