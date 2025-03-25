@@ -811,3 +811,150 @@ class CalorieCalculatorSerializerTests(APITestCase):
         self.assertFalse(serializer.is_valid())
         self.assertIn('activity_level', serializer.errors)
         self.assertEqual(serializer.errors['activity_level'][0], '"invalid_activity_level" is not a valid choice.')
+
+
+
+class MealPlanSummarySerializerTests(APITestCase):
+    """
+    Tests for MealPlanSummarySerializer
+    """
+
+    def setUp(self):
+        """
+        Set up the initial data for the tests.
+        """
+        # Create sample meals
+        self.meal_1 = Meal.objects.create(
+            name="Chicken Salad",
+            calories=400,
+            protein=35.0,
+            carbs=10.0,
+            fats=15.0,
+            description="A healthy chicken salad."
+        )
+        self.meal_2 = Meal.objects.create(
+            name="Grilled Salmon",
+            calories=500,
+            protein=40.0,
+            carbs=5.0,
+            fats=25.0,
+            description="Grilled salmon with vegetables."
+        )
+        
+        # Create meal plan and add meals to it
+        self.meal_plan = MealPlan.objects.create(
+            name="Bulking Meal Plan",
+            goal="bulking"
+        )
+        self.meal_plan.meals.add(self.meal_1, self.meal_2)
+
+
+    def test_meal_plan_summary_serializer_valid_data(self):
+        """
+        Test that the serializer correctly summarizes meal plan data.
+        """
+        # Create serializer instance using the meal plan's meals
+        serializer = MealPlanSummarySerializer(data={
+            'total_calories': 400 + 500,
+            'total_protein': 35.0 + 40.0,
+            'total_carbs': 10.0 + 5.0,
+            'total_fats': 15.0 + 25.0
+        })
+
+        # Validate if the data is correct
+        self.assertTrue(serializer.is_valid())
+        
+        # Test the serialized output against expected totals
+        data = serializer.data
+        self.assertEqual(data['total_calories'], 900)
+        self.assertEqual(data['total_protein'], 75.0)
+        self.assertEqual(data['total_carbs'], 15.0)
+        self.assertEqual(data['total_fats'], 40.0)
+
+
+    def test_meal_plan_summary_serializer_invalid_data(self):
+        """
+        Test that the serializer rejects invalid data.
+        """
+        # Provide invalid data (negative values)
+        serializer = MealPlanSummarySerializer(data={
+            'total_calories': -900,  # Invalid negative calories
+            'total_protein': -75.0,  # Invalid negative protein
+            'total_carbs': -15.0,    # Invalid negative carbs
+            'total_fats': -40.0      # Invalid negative fats
+        })
+
+        # Assert that the serializer is invalid and errors exist
+        self.assertFalse(serializer.is_valid())
+
+        # Check that the correct errors exist for each field
+        self.assertIn('total_calories', serializer.errors)
+        self.assertIn('total_protein', serializer.errors)
+        self.assertIn('total_carbs', serializer.errors)
+        self.assertIn('total_fats', serializer.errors)
+
+        # Assert the error messages for each field
+        self.assertEqual(serializer.errors['total_calories'][0], "This field must be a positive value.")
+        self.assertEqual(serializer.errors['total_protein'][0], "This field must be a positive value.")
+        self.assertEqual(serializer.errors['total_carbs'][0], "This field must be a positive value.")
+        self.assertEqual(serializer.errors['total_fats'][0], "This field must be a positive value.")
+        
+
+    def test_meal_plan_summary_serializer_missing_fields(self):
+        """
+        Test that the serializer raises an error if required fields are missing.
+        """
+        # Missing required fields, only sending 'total_calories'
+        serializer = MealPlanSummarySerializer(data={
+            'total_calories': 900
+        })
+
+        # Assert that the serializer is invalid because some fields are missing
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('total_protein', serializer.errors)
+        self.assertIn('total_carbs', serializer.errors)
+        self.assertIn('total_fats', serializer.errors)
+
+
+    def test_meal_plan_summary_serializer_empty_data(self):
+        """
+        Test that the serializer raises an error if no data is provided.
+        """
+        serializer = MealPlanSummarySerializer(data={})
+
+        # Assert that the serializer is invalid and errors are present for all fields
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('total_calories', serializer.errors)
+        self.assertIn('total_protein', serializer.errors)
+        self.assertIn('total_carbs', serializer.errors)
+        self.assertIn('total_fats', serializer.errors)
+
+
+    def test_meal_plan_summary_serializer_calculation_from_meals(self):
+        """
+        Test that the serializer can calculate total values from associated meals.
+        """
+        # Manually calculate the totals from meals
+        total_calories = self.meal_1.calories + self.meal_2.calories
+        total_protein = self.meal_1.protein + self.meal_2.protein
+        total_carbs = self.meal_1.carbs + self.meal_2.carbs
+        total_fats = self.meal_1.fats + self.meal_2.fats
+        
+        # Create the MealPlanSummary instance
+        meal_plan_data = {
+            'total_calories': total_calories,
+            'total_protein': total_protein,
+            'total_carbs': total_carbs,
+            'total_fats': total_fats
+        }
+
+        # Serialize and validate
+        serializer = MealPlanSummarySerializer(data=meal_plan_data)
+        self.assertTrue(serializer.is_valid())
+        
+        # Ensure the serialized values match the manually calculated totals
+        data = serializer.data
+        self.assertEqual(data['total_calories'], total_calories)
+        self.assertEqual(data['total_protein'], total_protein)
+        self.assertEqual(data['total_carbs'], total_carbs)
+        self.assertEqual(data['total_fats'], total_fats)
