@@ -4,37 +4,25 @@ from .models import Meal, MealPlan, MealInMealPlan, Recipe, CalorieCalculator
 
 
 
+# Custom Validator for Macronutrients
+def validate_positive(value):
+    if value < 0:
+        raise serializers.ValidationError("This field must be a positive value.")
+    return value
+
+
+
 class MealSerializer(serializers.ModelSerializer):
     """
     Serializer for the Meal model, representing a single meal with its nutritional information.
     """
+    protein = serializers.DecimalField(max_digits=5, decimal_places=2, validators=[validate_positive])
+    carbs = serializers.DecimalField(max_digits=5, decimal_places=2, validators=[validate_positive])
+    fats = serializers.DecimalField(max_digits=5, decimal_places=2, validators=[validate_positive])
+
     class Meta:
         model = Meal
         fields = ['id', 'name', 'calories', 'protein', 'carbs', 'fats', 'description']
-
-    def validate_protein(self, value):
-        """
-        Ensure protein value is positive.
-        """
-        if value < 0:
-            raise serializers.ValidationError("Protein must be a positive value.")
-        return value
-
-    def validate_carbs(self, value):
-        """
-        Ensure carbs value is positive.
-        """
-        if value < 0:
-            raise serializers.ValidationError("Carbs must be a positive value.")
-        return value
-
-    def validate_fats(self, value):
-        """
-        Ensure fats value is positive.
-        """
-        if value < 0:
-            raise serializers.ValidationError("Fats must be a positive value.")
-        return value
 
 
 
@@ -48,29 +36,21 @@ class MealPlanSerializer(serializers.ModelSerializer):
         model = MealPlan
         fields = ['id', 'name', 'goal', 'meals']
 
-    def get_total_calories(self, obj):
-        """
-        Calculate the total calories of the meal plan.
-        """
-        return obj.total_calories()
+    total_calories = serializers.IntegerField(read_only=True)
+    total_protein = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    total_carbs = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    total_fats = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
 
-    def get_total_protein(self, obj):
+    def to_representation(self, instance):
         """
-        Calculate the total protein of the meal plan.
+        Overriding to include calculated totals in the response.
         """
-        return obj.total_protein()
-
-    def get_total_carbs(self, obj):
-        """
-        Calculate the total carbs of the meal plan.
-        """
-        return obj.total_carbs()
-
-    def get_total_fats(self, obj):
-        """
-        Calculate the total fats of the meal plan.
-        """
-        return obj.total_fats()
+        representation = super().to_representation(instance)
+        representation['total_calories'] = instance.total_calories()
+        representation['total_protein'] = instance.total_protein()
+        representation['total_carbs'] = instance.total_carbs()
+        representation['total_fats'] = instance.total_fats()
+        return representation
 
 
 
@@ -98,41 +78,14 @@ class RecipeSerializer(serializers.ModelSerializer):
     """
     Serializer for the Recipe model, representing a recipe with ingredients, instructions, and nutritional info.
     """
+    calories = serializers.IntegerField(validators=[validate_positive])
+    protein = serializers.DecimalField(max_digits=5, decimal_places=2, validators=[validate_positive])
+    carbs = serializers.DecimalField(max_digits=5, decimal_places=2, validators=[validate_positive])
+    fats = serializers.DecimalField(max_digits=5, decimal_places=2, validators=[validate_positive])
+
     class Meta:
         model = Recipe
         fields = ['id', 'name', 'ingredients', 'instructions', 'calories', 'protein', 'carbs', 'fats']
-
-    def validate_calories(self, value):
-        """
-        Ensure calories are positive.
-        """
-        if value < 0:
-            raise serializers.ValidationError("Calories must be a positive value.")
-        return value
-
-    def validate_protein(self, value):
-        """
-        Ensure protein is positive.
-        """
-        if value < 0:
-            raise serializers.ValidationError("Protein must be a positive value.")
-        return value
-
-    def validate_carbs(self, value):
-        """
-        Ensure carbs are positive.
-        """
-        if value < 0:
-            raise serializers.ValidationError("Carbs must be a positive value.")
-        return value
-
-    def validate_fats(self, value):
-        """
-        Ensure fats are positive.
-        """
-        if value < 0:
-            raise serializers.ValidationError("Fats must be a positive value.")
-        return value
 
 
 
@@ -140,33 +93,13 @@ class CalorieCalculatorSerializer(serializers.ModelSerializer):
     """
     Serializer for the CalorieCalculator model, representing user inputs for calorie calculation.
     """
+    age = serializers.IntegerField(validators=[validate_positive])
+    weight = serializers.FloatField(validators=[validate_positive])
+    height = serializers.FloatField(validators=[validate_positive])
+
     class Meta:
         model = CalorieCalculator
         fields = ['id', 'gender', 'age', 'weight', 'height', 'activity_level', 'goal']
-
-    def validate_age(self, value):
-        """
-        Ensure age is positive.
-        """
-        if value <= 0:
-            raise serializers.ValidationError("Age must be a positive number.")
-        return value
-
-    def validate_weight(self, value):
-        """
-        Ensure weight is positive.
-        """
-        if value <= 0:
-            raise serializers.ValidationError("Weight must be a positive number.")
-        return value
-
-    def validate_height(self, value):
-        """
-        Ensure height is positive.
-        """
-        if value <= 0:
-            raise serializers.ValidationError("Height must be a positive number.")
-        return value
 
     def calculate_calories(self, obj):
         """
@@ -184,4 +117,3 @@ class MealPlanSummarySerializer(serializers.Serializer):
     total_protein = serializers.DecimalField(max_digits=5, decimal_places=2)
     total_carbs = serializers.DecimalField(max_digits=5, decimal_places=2)
     total_fats = serializers.DecimalField(max_digits=5, decimal_places=2)
-    
