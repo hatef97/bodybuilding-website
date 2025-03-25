@@ -35,3 +35,39 @@ class MealSerializer(serializers.ModelSerializer):
         if value < 0:
             raise serializers.ValidationError("Fats must be a positive value.")
         return value
+
+
+
+class MealPlanSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the MealPlan model, representing a meal plan with a list of meals and its goal.
+    """
+    meals = MealSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = MealPlan
+        fields = ['id', 'name', 'goal', 'meals']
+
+    def get_total_calories(self, obj):
+        """
+        Calculate the total calories of the meal plan.
+        """
+        return obj.total_calories()
+
+    def get_total_protein(self, obj):
+        """
+        Calculate the total protein of the meal plan.
+        """
+        return obj.total_protein()
+
+    def get_total_carbs(self, obj):
+        """
+        Calculate the total carbs of the meal plan.
+        """
+        return obj.total_carbs()
+
+    def get_total_fats(self, obj):
+        """
+        Calculate the total fats of the meal plan.
+        """
+        return obj.total_fats()
