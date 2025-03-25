@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 
 from .models import Meal, MealPlan, MealInMealPlan, Recipe, CalorieCalculator
 
@@ -66,19 +67,30 @@ class MealInMealPlanSerializer(serializers.ModelSerializer):
     """
     Serializer for the MealInMealPlan model, which defines the order of meals in a meal plan.
     """
-    meal = MealSerializer()
+    meal = serializers.PrimaryKeyRelatedField(queryset=Meal.objects.all())  # Use the meal's ID
+    order = serializers.IntegerField(min_value=1)  # Validate that order is a positive value
 
     class Meta:
         model = MealInMealPlan
         fields = ['id', 'meal_plan', 'meal', 'order']
 
-    def validate_order(self, value):
+    def validate(self, data):
         """
-        Ensure that the order is a positive integer.
+        Ensure that the combination of meal and meal_plan is unique.
         """
-        if value < 1:
-            raise serializers.ValidationError("Order must be a positive integer.")
-        return value
+        meal = data.get('meal')
+        meal_plan = data.get('meal_plan')
+
+        # Check if the meal is already in the meal plan
+        if MealInMealPlan.objects.filter(meal=meal, meal_plan=meal_plan).exists():
+            raise serializers.ValidationError("This meal is already added to the meal plan.")
+        
+        return data
+
+    def create(self, validated_data):
+        # Create the MealInMealPlan instance
+        meal_in_meal_plan = MealInMealPlan.objects.create(**validated_data)
+        return meal_in_meal_plan
 
 
 

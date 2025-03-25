@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from rest_framework.test import APITestCase
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 
 from nutrition.models import *
 from nutrition.serializers import *
@@ -280,3 +281,169 @@ class MealPlanSerializerTests(APITestCase):
         self.assertEqual(meal_plan.total_protein(), total_protein)
         self.assertEqual(meal_plan.total_carbs(), total_carbs)
         self.assertEqual(meal_plan.total_fats(), total_fats)
+
+
+class MealInMealPlanSerializerTests(APITestCase):
+    
+    def setUp(self):
+        """
+        Set up the initial data for the tests.
+        """
+        # Create a sample meal and meal plan
+        self.meal_1 = Meal.objects.create(
+            name="Chicken Salad",
+            calories=400,
+            protein=35,
+            carbs=10,
+            fats=15,
+            description="A healthy chicken salad."
+        )
+        self.meal_2 = Meal.objects.create(
+            name="Grilled Salmon",
+            calories=500,
+            protein=40,
+            carbs=5,
+            fats=25,
+            description="Grilled salmon with vegetables."
+        )
+        self.meal_plan = MealPlan.objects.create(
+            name="Bulking Meal Plan",
+            goal="bulking"
+        )
+
+
+    def test_meal_in_meal_plan_serializer_valid_data(self):
+        """
+        Test that the serializer correctly serializes valid data.
+        """
+        meal_in_plan = MealInMealPlan.objects.create(meal=self.meal_1, meal_plan=self.meal_plan, order=1)
+        
+        # Serialize the MealInMealPlan instance
+        serializer = MealInMealPlanSerializer(meal_in_plan)
+        data = serializer.data
+        
+        # Check the serialized meal data
+        self.assertEqual(data['meal'], self.meal_1.id)  # Check that the 'meal' is just the ID (not full object)
+        self.assertEqual(data['meal_plan'], self.meal_plan.id)
+        self.assertEqual(data['order'], 1)
+
+
+    def test_meal_in_meal_plan_serializer_invalid_order(self):
+        """
+        Test that an invalid order (negative or zero) raises a validation error.
+        """
+        # Test with negative order
+        data = {
+            "meal": self.meal_1.id,  # Only pass the meal ID here
+            "meal_plan": self.meal_plan.id,  # Ensure you are using a valid meal plan ID
+            "order": -1  # Invalid order
+        }
+        serializer = MealInMealPlanSerializer(data=data)
+        self.assertFalse(serializer.is_valid())  # The serializer should be invalid due to the negative order
+        self.assertIn("order", serializer.errors)  # Ensure the 'order' field is in the errors
+        self.assertEqual(serializer.errors['order'][0], 'Ensure this value is greater than or equal to 1.')  # Check the error message
+
+        # Test with zero order
+        data["order"] = 0  # Invalid order (zero)
+        serializer = MealInMealPlanSerializer(data=data)
+        self.assertFalse(serializer.is_valid())  # The serializer should be invalid due to the zero order
+        self.assertIn("order", serializer.errors)  # Ensure the 'order' field is in the errors
+        self.assertEqual(serializer.errors['order'][0], 'Ensure this value is greater than or equal to 1.')  # Check the error message
+        
+        
+    def test_meal_in_meal_plan_serializer_missing_order(self):
+        """
+        Test that the serializer raises an error if the order field is missing.
+        """
+        data = {
+            "meal": self.meal_1.id,
+            "meal_plan": self.meal_plan.id,
+        }
+        serializer = MealInMealPlanSerializer(data=data)
+        self.assertFalse(serializer.is_valid())  # Order is required
+        self.assertIn('order', serializer.errors)
+
+
+    def test_meal_in_meal_plan_serializer_missing_meal(self):
+        """
+        Test that the serializer raises an error if the meal field is missing.
+        """
+        data = {
+            "meal_plan": self.meal_plan.id,
+            "order": 1
+        }
+        serializer = MealInMealPlanSerializer(data=data)
+        self.assertFalse(serializer.is_valid())  # Meal is required
+        self.assertIn('meal', serializer.errors)
+
+
+    def test_meal_in_meal_plan_serializer_valid_order(self):
+        """
+        Test that the serializer correctly handles a valid order field.
+        """
+        data = {
+            "meal": self.meal_1.id,  # Pass the meal ID
+            "meal_plan": self.meal_plan.id,  # Ensure you're using a valid meal plan ID
+            "order": 1  # Valid order
+        }
+
+        # Create the serializer instance
+        serializer = MealInMealPlanSerializer(data=data)
+
+        # Validate if the serializer is valid
+        self.assertTrue(serializer.is_valid())  # Valid order should pass
+
+        # Save the instance and check that the order is correct
+        meal_in_plan = serializer.save()
+        self.assertEqual(meal_in_plan.order, 1)
+
+
+    def test_meal_in_meal_plan_serializer_order_validation(self):
+        """
+        Test that the custom validation for the 'order' field works as expected.
+        """
+        data = {
+            "meal": self.meal_1.id,
+            "meal_plan": self.meal_plan.id,
+            "order": -1  # Invalid order
+        }
+        serializer = MealInMealPlanSerializer(data=data)
+        self.assertFalse(serializer.is_valid())  # Invalid order should fail validation
+        self.assertIn('order', serializer.errors)
+        self.assertEqual(serializer.errors['order'][0], 'Ensure this value is greater than or equal to 1.')
+
+
+    def test_meal_in_meal_plan_serializer_duplicate_meal_in_plan(self):
+        """
+        Test that duplicate entries (meal already added to the plan) are not allowed.
+        """
+        # Add a meal to the meal plan
+        MealInMealPlan.objects.create(meal=self.meal_1, meal_plan=self.meal_plan, order=1)
+
+        # Try to add the same meal to the same meal plan again
+        data = {
+            "meal": self.meal_1.id,  # Send only the meal ID
+            "meal_plan": self.meal_plan.id,  # Same meal plan
+            "order": 2  # Different order
+        }
+
+        serializer = MealInMealPlanSerializer(data=data)
+
+        # Ensure the serializer is not valid due to duplicate meal in plan
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("non_field_errors", serializer.errors)  # Check for non_field_errors
+        self.assertEqual(serializer.errors["non_field_errors"][0], "The fields meal_plan, meal must make a unique set.")  # Updated error message
+        
+
+    def test_meal_in_meal_plan_serializer_order_update(self):
+        """
+        Test if the order can be updated correctly.
+        """
+        meal_in_plan = MealInMealPlan.objects.create(meal=self.meal_1, meal_plan=self.meal_plan, order=1)
+        meal_in_plan.order = 2  # Update order
+        meal_in_plan.save()
+        
+        # Serialize and check the updated order
+        serializer = MealInMealPlanSerializer(meal_in_plan)
+        data = serializer.data
+        self.assertEqual(data['order'], 2)
