@@ -1,4 +1,7 @@
+from django.core.exceptions import ValidationError
 from django.db import models
+
+from decimal import Decimal
 
 
 
@@ -19,6 +22,17 @@ class Meal(models.Model):
 
     def __str__(self):
         return self.name
+
+    def clean(self):
+        """
+        Custom validation to ensure macronutrients are not negative.
+        """
+        if self.protein < 0:
+            raise ValidationError("Protein must be a positive value.")
+        if self.carbs < 0:
+            raise ValidationError("Carbs must be a positive value.")
+        if self.fats < 0:
+            raise ValidationError("Fats must be a positive value.")
 
 
 
