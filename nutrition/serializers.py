@@ -173,3 +173,15 @@ class CalorieCalculatorSerializer(serializers.ModelSerializer):
         Calculate daily caloric requirement based on Harris-Benedict formula.
         """
         return obj.calculate_calories()
+
+
+
+class MealPlanSummarySerializer(serializers.Serializer):
+    """
+    A serializer to show summary data for the meal plan (total calories, protein, carbs, fats).
+    """
+    total_calories = serializers.IntegerField()
+    total_protein = serializers.DecimalField(max_digits=5, decimal_places=2)
+    total_carbs = serializers.DecimalField(max_digits=5, decimal_places=2)
+    total_fats = serializers.DecimalField(max_digits=5, decimal_places=2)
+    
