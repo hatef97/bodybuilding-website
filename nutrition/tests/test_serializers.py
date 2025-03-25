@@ -3,8 +3,8 @@ from decimal import Decimal
 from rest_framework.test import APITestCase
 from rest_framework import status
 
-from nutrition.models import Meal
-from nutrition.serializers import MealSerializer
+from nutrition.models import *
+from nutrition.serializers import *
 
 
 
@@ -125,3 +125,158 @@ class MealSerializerTests(APITestCase):
         serializer = MealSerializer(data=invalid_data)
         self.assertFalse(serializer.is_valid())
         self.assertIn('carbs', serializer.errors)  # Carbs field is missing in the data
+
+
+
+class MealPlanSerializerTests(APITestCase):
+
+    def setUp(self):
+        """
+        Set up initial data for the tests. Create meals and a meal plan for testing.
+        """
+        self.meal_1 = Meal.objects.create(
+            name="Chicken Salad",
+            calories=400,
+            protein=30.00,
+            carbs=10.00,
+            fats=15.00,
+            description="A healthy chicken salad."
+        )
+        
+        self.meal_2 = Meal.objects.create(
+            name="Grilled Salmon",
+            calories=500,
+            protein=40.00,
+            carbs=5.00,
+            fats=25.00,
+            description="Grilled salmon with vegetables."
+        )
+
+        self.meal_plan = MealPlan.objects.create(
+            name="Bulking Meal Plan",
+            goal="bulking"
+        )
+
+        # Adding meals to the meal plan
+        self.meal_plan.meals.add(self.meal_1, self.meal_2)
+
+        self.valid_meal_plan_data = {
+            'name': 'Bulking Meal Plan',
+            'goal': 'bulking',
+            'meals': [
+                {'id': self.meal_1.id, 'name': 'Chicken Salad', 'calories': 400, 'protein': Decimal('30.00'), 'carbs': Decimal('10.00'), 'fats': Decimal('15.00')},
+                {'id': self.meal_2.id, 'name': 'Grilled Salmon', 'calories': 500, 'protein': Decimal('40.00'), 'carbs': Decimal('5.00'), 'fats': Decimal('25.00')}
+            ]
+        }
+
+
+    def test_meal_plan_serializer_valid_data(self):
+        """
+        Test that the MealPlanSerializer correctly serializes data and includes calculated totals.
+        """
+        serializer = MealPlanSerializer(self.meal_plan)
+        data = serializer.data
+        self.assertEqual(data['name'], "Bulking Meal Plan")
+        self.assertEqual(data['goal'], "bulking")
+        self.assertIn('meals', data)
+        self.assertEqual(len(data['meals']), 2)
+        
+        # Check if total macronutrients are correctly calculated
+        self.assertEqual(data['total_calories'], 400 + 500)  # Total calories: 400 + 500
+        self.assertEqual(data['total_protein'], Decimal('30.00') + Decimal('40.00'))  # Total protein: 30 + 40
+        self.assertEqual(data['total_carbs'], Decimal('10.00') + Decimal('5.00'))  # Total carbs: 10 + 5
+        self.assertEqual(data['total_fats'], Decimal('15.00') + Decimal('25.00'))  # Total fats: 15 + 25
+
+
+    def test_meal_plan_serializer_invalid_goal(self):
+        """
+        Test if invalid goal raises an error when creating a MealPlan.
+        """
+        invalid_data = {
+            'name': 'Invalid Meal Plan',
+            'goal': 'invalid_goal',  # Invalid goal
+            'meals': [
+                {'id': self.meal_1.id},
+                {'id': self.meal_2.id}
+            ]
+        }
+
+        serializer = MealPlanSerializer(data=invalid_data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('goal', serializer.errors)  # Ensure 'goal' is in errors
+
+
+    def test_meal_plan_serializer_no_meals(self):
+        """
+        Test that a MealPlan with no meals does not cause errors and has zero totals.
+        """
+        meal_plan_no_meals = MealPlan.objects.create(name="No Meals Plan", goal="cutting")
+        serializer = MealPlanSerializer(meal_plan_no_meals)
+        data = serializer.data
+        
+        self.assertEqual(data['name'], "No Meals Plan")
+        self.assertEqual(data['goal'], "cutting")
+        self.assertEqual(data['total_calories'], 0)
+        self.assertEqual(data['total_protein'], Decimal('0.00'))
+        self.assertEqual(data['total_carbs'], Decimal('0.00'))
+        self.assertEqual(data['total_fats'], Decimal('0.00'))
+
+
+    def test_meal_plan_serializer_missing_meal_fields(self):
+        """
+        Test if MealPlanSerializer raises an error when required fields in meals are missing.
+        """
+        data = {
+            "name": "Test Meal Plan",
+            "goal": "bulking",
+            "meals": [
+                {
+                    "name": "Chicken Salad",
+                    "calories": 400,
+                    # Missing protein, carbs, and fats
+                }
+            ]
+        }
+
+        serializer = MealPlanSerializer(data=data)
+        self.assertFalse(serializer.is_valid())  # The serializer should be invalid due to missing fields in the meal
+        self.assertIn("meals", serializer.errors)  # Ensure meals field is in errors
+        self.assertIn("protein", serializer.errors["meals"][0])  # Ensure protein is in the errors for the meal
+        self.assertIn("carbs", serializer.errors["meals"][0])  # Ensure carbs is in the errors for the meal
+        self.assertIn("fats", serializer.errors["meals"][0])  # Ensure fats is in the errors for the meal
+
+
+    def test_meal_plan_serializer_meal_ordering(self):
+        """
+        Test that the meals in the MealPlan are correctly ordered based on the 'order' field.
+        """
+        # Ensure the meal doesn't already exist in the plan, to avoid IntegrityError
+        if not MealInMealPlan.objects.filter(meal=self.meal_1, meal_plan=self.meal_plan).exists():
+            meal_in_plan_1 = MealInMealPlan.objects.create(meal=self.meal_1, meal_plan=self.meal_plan, order=1)
+        if not MealInMealPlan.objects.filter(meal=self.meal_2, meal_plan=self.meal_plan).exists():
+            meal_in_plan_2 = MealInMealPlan.objects.create(meal=self.meal_2, meal_plan=self.meal_plan, order=2)
+        
+        # Now check if they are ordered properly
+        meal_plan_serializer = MealPlanSerializer(self.meal_plan)
+        
+        meal_plan_data = meal_plan_serializer.data
+        meal_ids_in_order = [meal['id'] for meal in meal_plan_data['meals']]
+        
+        # Ensure meals are ordered by the 'order' field
+        self.assertEqual(meal_ids_in_order, [self.meal_1.id, self.meal_2.id])  # Correct order should be meal_1 first, meal_2 second
+
+
+    def test_meal_plan_calculation_of_macros(self):
+        """
+        Test that macros (calories, protein, carbs, fats) are correctly calculated and returned.
+        """
+        meal_plan = MealPlan.objects.get(id=self.meal_plan.id)
+        total_calories = sum([meal.calories for meal in meal_plan.meals.all()])
+        total_protein = sum([meal.protein for meal in meal_plan.meals.all()])
+        total_carbs = sum([meal.carbs for meal in meal_plan.meals.all()])
+        total_fats = sum([meal.fats for meal in meal_plan.meals.all()])
+
+        self.assertEqual(meal_plan.total_calories(), total_calories)
+        self.assertEqual(meal_plan.total_protein(), total_protein)
+        self.assertEqual(meal_plan.total_carbs(), total_carbs)
+        self.assertEqual(meal_plan.total_fats(), total_fats)

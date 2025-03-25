@@ -24,22 +24,30 @@ class MealSerializer(serializers.ModelSerializer):
         model = Meal
         fields = ['id', 'name', 'calories', 'protein', 'carbs', 'fats', 'description']
 
+    def validate(self, data):
+        """
+        Custom validation to ensure no required fields are missing.
+        """
+        if not data.get('protein') or not data.get('carbs') or not data.get('fats'):
+            raise serializers.ValidationError("Protein, carbs, and fats are required fields.")
+        return data
+
 
 
 class MealPlanSerializer(serializers.ModelSerializer):
     """
     Serializer for the MealPlan model, representing a meal plan with a list of meals and its goal.
     """
-    meals = MealSerializer(many=True, read_only=True)
-
-    class Meta:
-        model = MealPlan
-        fields = ['id', 'name', 'goal', 'meals']
+    meals = MealSerializer(many=True)
 
     total_calories = serializers.IntegerField(read_only=True)
     total_protein = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
     total_carbs = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
     total_fats = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = MealPlan
+        fields = ['id', 'name', 'goal', 'meals', 'total_calories', 'total_protein', 'total_carbs', 'total_fats']
 
     def to_representation(self, instance):
         """
