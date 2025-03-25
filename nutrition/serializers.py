@@ -71,3 +71,24 @@ class MealPlanSerializer(serializers.ModelSerializer):
         Calculate the total fats of the meal plan.
         """
         return obj.total_fats()
+
+
+
+class MealInMealPlanSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the MealInMealPlan model, which defines the order of meals in a meal plan.
+    """
+    meal = MealSerializer()
+
+    class Meta:
+        model = MealInMealPlan
+        fields = ['id', 'meal_plan', 'meal', 'order']
+
+    def validate_order(self, value):
+        """
+        Ensure that the order is a positive integer.
+        """
+        if value < 1:
+            raise serializers.ValidationError("Order must be a positive integer.")
+        return value
+        
