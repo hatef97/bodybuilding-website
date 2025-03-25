@@ -133,3 +133,43 @@ class RecipeSerializer(serializers.ModelSerializer):
         if value < 0:
             raise serializers.ValidationError("Fats must be a positive value.")
         return value
+
+
+
+class CalorieCalculatorSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the CalorieCalculator model, representing user inputs for calorie calculation.
+    """
+    class Meta:
+        model = CalorieCalculator
+        fields = ['id', 'gender', 'age', 'weight', 'height', 'activity_level', 'goal']
+
+    def validate_age(self, value):
+        """
+        Ensure age is positive.
+        """
+        if value <= 0:
+            raise serializers.ValidationError("Age must be a positive number.")
+        return value
+
+    def validate_weight(self, value):
+        """
+        Ensure weight is positive.
+        """
+        if value <= 0:
+            raise serializers.ValidationError("Weight must be a positive number.")
+        return value
+
+    def validate_height(self, value):
+        """
+        Ensure height is positive.
+        """
+        if value <= 0:
+            raise serializers.ValidationError("Height must be a positive number.")
+        return value
+
+    def calculate_calories(self, obj):
+        """
+        Calculate daily caloric requirement based on Harris-Benedict formula.
+        """
+        return obj.calculate_calories()
