@@ -91,4 +91,45 @@ class MealInMealPlanSerializer(serializers.ModelSerializer):
         if value < 1:
             raise serializers.ValidationError("Order must be a positive integer.")
         return value
-        
+
+
+
+class RecipeSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Recipe model, representing a recipe with ingredients, instructions, and nutritional info.
+    """
+    class Meta:
+        model = Recipe
+        fields = ['id', 'name', 'ingredients', 'instructions', 'calories', 'protein', 'carbs', 'fats']
+
+    def validate_calories(self, value):
+        """
+        Ensure calories are positive.
+        """
+        if value < 0:
+            raise serializers.ValidationError("Calories must be a positive value.")
+        return value
+
+    def validate_protein(self, value):
+        """
+        Ensure protein is positive.
+        """
+        if value < 0:
+            raise serializers.ValidationError("Protein must be a positive value.")
+        return value
+
+    def validate_carbs(self, value):
+        """
+        Ensure carbs are positive.
+        """
+        if value < 0:
+            raise serializers.ValidationError("Carbs must be a positive value.")
+        return value
+
+    def validate_fats(self, value):
+        """
+        Ensure fats are positive.
+        """
+        if value < 0:
+            raise serializers.ValidationError("Fats must be a positive value.")
+        return value
