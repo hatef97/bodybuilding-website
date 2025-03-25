@@ -447,3 +447,194 @@ class MealInMealPlanSerializerTests(APITestCase):
         serializer = MealInMealPlanSerializer(meal_in_plan)
         data = serializer.data
         self.assertEqual(data['order'], 2)
+
+
+
+class RecipeSerializerTests(APITestCase):
+    
+    def setUp(self):
+        """
+        Set up initial data for the tests. This will create some test data to work with.
+        """
+        # Create a sample Recipe object
+        self.recipe_data = {
+            'name': 'Chicken Salad',
+            'ingredients': 'Chicken, lettuce, olive oil, vinegar',
+            'instructions': 'Mix all ingredients in a bowl.',
+            'calories': 350,
+            'protein': 30.5,
+            'carbs': 10.0,
+            'fats': 15.0
+        }
+        self.recipe = Recipe.objects.create(**self.recipe_data)
+
+
+    def test_recipe_serializer_valid_data(self):
+        """
+        Test that the serializer correctly serializes valid data.
+        """
+        # Assuming the 'recipe' instance exists with valid data
+        serializer = RecipeSerializer(instance=self.recipe)
+        data = serializer.data
+        
+        # Check that the name and fields match the expected values
+        self.assertEqual(data['name'], self.recipe_data['name'])  # Check that the 'name' is correctly serialized
+        self.assertEqual(data['ingredients'], self.recipe_data['ingredients'])  # Check ingredients
+        self.assertEqual(data['instructions'], self.recipe_data['instructions'])  # Check instructions
+        self.assertEqual(data['calories'], self.recipe_data['calories'])  # Check calories
+        self.assertEqual(str(data['protein']).rstrip('0').rstrip('.'), str(self.recipe_data['protein']).rstrip('0').rstrip('.'))  # Check protein (Decimal comparison)
+        self.assertEqual(str(data['carbs']).rstrip('0').rstrip('.'), str(self.recipe_data['carbs']).rstrip('0').rstrip('.'))  # Check carbs (Decimal comparison)
+        self.assertEqual(str(data['fats']).rstrip('0').rstrip('.'), str(self.recipe_data['fats']).rstrip('0').rstrip('.'))  # Check fats (Decimal comparison)
+
+
+    def test_recipe_serializer_invalid_negative_calories(self):
+        """
+        Test that negative calories raise a validation error.
+        """
+        data = self.recipe_data.copy()
+        data['calories'] = -100  # Invalid negative calories
+        
+        serializer = RecipeSerializer(data=data)
+        self.assertFalse(serializer.is_valid())  # The serializer should be invalid due to negative calories
+        self.assertIn('calories', serializer.errors)  # Ensure the 'calories' field is in the errors
+        self.assertEqual(serializer.errors['calories'][0], 'This field must be a positive value.')  # Check the error message
+
+
+    def test_recipe_serializer_invalid_negative_protein(self):
+        """
+        Test that negative protein values raise a validation error.
+        """
+        data = self.recipe_data.copy()
+        data['protein'] = -20.5  # Invalid negative protein value
+        
+        serializer = RecipeSerializer(data=data)
+        self.assertFalse(serializer.is_valid())  # The serializer should be invalid due to negative protein
+        self.assertIn('protein', serializer.errors)  # Ensure the 'protein' field is in the errors
+        self.assertEqual(serializer.errors['protein'][0], 'This field must be a positive value.')  # Check the error message
+
+
+    def test_recipe_serializer_invalid_negative_carbs(self):
+        """
+        Test that negative carbs values raise a validation error.
+        """
+        data = self.recipe_data.copy()
+        data['carbs'] = -5.0  # Invalid negative carbs value
+        
+        serializer = RecipeSerializer(data=data)
+        self.assertFalse(serializer.is_valid())  # The serializer should be invalid due to negative carbs
+        self.assertIn('carbs', serializer.errors)  # Ensure the 'carbs' field is in the errors
+        self.assertEqual(serializer.errors['carbs'][0], 'This field must be a positive value.')  # Check the error message
+
+
+    def test_recipe_serializer_invalid_negative_fats(self):
+        """
+        Test that negative fats values raise a validation error.
+        """
+        data = self.recipe_data.copy()
+        data['fats'] = -10.0  # Invalid negative fats value
+        
+        serializer = RecipeSerializer(data=data)
+        self.assertFalse(serializer.is_valid())  # The serializer should be invalid due to negative fats
+        self.assertIn('fats', serializer.errors)  # Ensure the 'fats' field is in the errors
+        self.assertEqual(serializer.errors['fats'][0], 'This field must be a positive value.')  # Check the error message
+
+
+    def test_recipe_serializer_missing_required_fields(self):
+        """
+        Test that missing required fields raise a validation error.
+        """
+        data = {}  # Missing all fields
+        
+        serializer = RecipeSerializer(data=data)
+        self.assertFalse(serializer.is_valid())  # The serializer should be invalid due to missing fields
+        self.assertIn('name', serializer.errors)  # Ensure the 'name' field is in the errors
+        self.assertIn('ingredients', serializer.errors)  # Ensure the 'ingredients' field is in the errors
+        self.assertIn('instructions', serializer.errors)  # Ensure the 'instructions' field is in the errors
+        self.assertIn('calories', serializer.errors)  # Ensure the 'calories' field is in the errors
+        self.assertIn('protein', serializer.errors)  # Ensure the 'protein' field is in the errors
+        self.assertIn('carbs', serializer.errors)  # Ensure the 'carbs' field is in the errors
+        self.assertIn('fats', serializer.errors)  # Ensure the 'fats' field is in the errors
+
+
+    def test_recipe_serializer_missing_name(self):
+        """
+        Test that missing the name field raises a validation error.
+        """
+        data = self.recipe_data.copy()
+        del data['name']  # Remove the 'name' field
+        
+        serializer = RecipeSerializer(data=data)
+        self.assertFalse(serializer.is_valid())  # The serializer should be invalid due to missing 'name'
+        self.assertIn('name', serializer.errors)  # Ensure the 'name' field is in the errors
+
+
+    def test_recipe_serializer_missing_ingredients(self):
+        """
+        Test that missing the ingredients field raises a validation error.
+        """
+        data = self.recipe_data.copy()
+        del data['ingredients']  # Remove the 'ingredients' field
+        
+        serializer = RecipeSerializer(data=data)
+        self.assertFalse(serializer.is_valid())  # The serializer should be invalid due to missing 'ingredients'
+        self.assertIn('ingredients', serializer.errors)  # Ensure the 'ingredients' field is in the errors
+
+
+    def test_recipe_serializer_missing_instructions(self):
+        """
+        Test that missing the instructions field raises a validation error.
+        """
+        data = self.recipe_data.copy()
+        del data['instructions']  # Remove the 'instructions' field
+        
+        serializer = RecipeSerializer(data=data)
+        self.assertFalse(serializer.is_valid())  # The serializer should be invalid due to missing 'instructions'
+        self.assertIn('instructions', serializer.errors)  # Ensure the 'instructions' field is in the errors
+
+
+    def test_recipe_serializer_missing_calories(self):
+        """
+        Test that missing the calories field raises a validation error.
+        """
+        data = self.recipe_data.copy()
+        del data['calories']  # Remove the 'calories' field
+        
+        serializer = RecipeSerializer(data=data)
+        self.assertFalse(serializer.is_valid())  # The serializer should be invalid due to missing 'calories'
+        self.assertIn('calories', serializer.errors)  # Ensure the 'calories' field is in the errors
+
+
+    def test_recipe_serializer_missing_protein(self):
+        """
+        Test that missing the protein field raises a validation error.
+        """
+        data = self.recipe_data.copy()
+        del data['protein']  # Remove the 'protein' field
+        
+        serializer = RecipeSerializer(data=data)
+        self.assertFalse(serializer.is_valid())  # The serializer should be invalid due to missing 'protein'
+        self.assertIn('protein', serializer.errors)  # Ensure the 'protein' field is in the errors
+
+
+    def test_recipe_serializer_missing_carbs(self):
+        """
+        Test that missing the carbs field raises a validation error.
+        """
+        data = self.recipe_data.copy()
+        del data['carbs']  # Remove the 'carbs' field
+        
+        serializer = RecipeSerializer(data=data)
+        self.assertFalse(serializer.is_valid())  # The serializer should be invalid due to missing 'carbs'
+        self.assertIn('carbs', serializer.errors)  # Ensure the 'carbs' field is in the errors
+
+
+    def test_recipe_serializer_missing_fats(self):
+        """
+        Test that missing the fats field raises a validation error.
+        """
+        data = self.recipe_data.copy()
+        del data['fats']  # Remove the 'fats' field
+        
+        serializer = RecipeSerializer(data=data)
+        self.assertFalse(serializer.is_valid())  # The serializer should be invalid due to missing 'fats'
+        self.assertIn('fats', serializer.errors)  # Ensure the 'fats' field is in the errors
