@@ -70,7 +70,6 @@ class MealPlanViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing meal plans with optimized queries and flexible permissions.
     """
-    permission_classes = [IsAuthenticated]
     serializer_class = MealPlanSerializer
     pagination_class = StandardResultsSetPagination  # Use pagination for large result sets
 
@@ -128,3 +127,21 @@ class MealPlanViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         return Response(serializer.data)
+
+
+
+class RecipeViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing recipes.
+    """
+    queryset = Recipe.objects.all()
+    serializer_class = RecipeSerializer
+    pagination_class = StandardResultsSetPagination  # Use pagination for large result sets
+
+    def get_permissions(self):
+        """
+        Allow authenticated users to perform CRUD operations on meal plans.
+        """
+        if self.action in ['create', 'update', 'destroy']:
+            return [IsAdminUser()]  # Only admins can create, update, or destroy meal plans
+        return [IsAuthenticated()]  # Any authenticated user can list or view meal plans
