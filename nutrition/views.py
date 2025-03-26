@@ -192,3 +192,55 @@ class CalorieCalculatorViewSet(viewsets.ModelViewSet):
         calories = calorie_calculator.calculate_calories()
 
         return Response({"daily_calories": calories}, status=status.HTTP_200_OK)
+
+
+
+# Create a MealInMealPlanViewSet for handling the many-to-many relation between Meal and MealPlan.
+class MealInMealPlanViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for adding meals to a meal plan.
+    """
+    serializer_class = MealInMealPlanSerializer
+    pagination_class = StandardResultsSetPagination  # Use pagination for large result sets
+
+    def get_permissions(self):
+        """
+        Allow authenticated users to perform CRUD operations on meal plans.
+        """
+        if self.action in ['create', 'update', 'destroy']:
+            return [IsAdminUser()]  # Only admins can create, update, or destroy meal plans
+        return [IsAuthenticated()]  # Any authenticated user can list or view meal plans
+
+    def get_queryset(self):
+        """
+        Customize the queryset to filter by the meal plan and user.
+        """
+        queryset = MealInMealPlan.objects.all()
+
+        # Filter by meal_plan (useful for actions like 'meal_plan')
+        meal_plan_id = self.request.query_params.get('meal_plan', None)
+        if meal_plan_id:
+            queryset = queryset.filter(meal_plan__id=meal_plan_id)
+
+        # Optionally, you can add a filter to allow access to only the authenticated user's meal plans
+        if self.request.user.is_authenticated:
+            queryset = queryset.filter(meal_plan__user=self.request.user)
+
+        # Prefetch related meals to optimize queries when retrieving meal plans
+        queryset = queryset.prefetch_related(
+            Prefetch('meal', queryset=Meal.objects.all())  # Prefetch meals
+        )
+
+        return queryset
+
+    @action(detail=True, methods=['get'])
+    def meal_plan(self, request, pk=None):
+        """
+        Custom action to retrieve all meals in a specific meal plan.
+        """
+        meal_in_meal_plan = self.get_object()
+        meal_plan = meal_in_meal_plan.meal_plan
+        meals = meal_plan.meals.all()
+        serializer = MealSerializer(meals, many=True)
+        return Response(serializer.data)
+        
