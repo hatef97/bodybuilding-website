@@ -217,14 +217,20 @@ class MealInMealPlanViewSet(viewsets.ModelViewSet):
         """
         queryset = MealInMealPlan.objects.all()
 
-        # Filter by meal_plan (useful for actions like 'meal_plan')
+        # Ensure you're passing the MealPlan instance or its ID
         meal_plan_id = self.request.query_params.get('meal_plan', None)
         if meal_plan_id:
-            queryset = queryset.filter(meal_plan__id=meal_plan_id)
+            try:
+                # Ensure you're querying by ID, not email or other parameters
+                meal_plan = MealPlan.objects.get(id=meal_plan_id)
+                queryset = queryset.filter(meal_plan=meal_plan)
+            except MealPlan.DoesNotExist:
+                # Handle error if MealPlan is not found
+                raise ValidationError("MealPlan with the provided ID does not exist.")
 
-        # Optionally, you can add a filter to allow access to only the authenticated user's meal plans
-        if self.request.user.is_authenticated:
-            queryset = queryset.filter(meal_plan__user=self.request.user)
+        # # Optionally, you can add a filter to allow access to only the authenticated user's meal plans
+        # if self.request.user.is_authenticated:
+        #     queryset = queryset.filter(meal_plan__user=self.request.user)
 
         # Prefetch related meals to optimize queries when retrieving meal plans
         queryset = queryset.prefetch_related(
@@ -243,4 +249,3 @@ class MealInMealPlanViewSet(viewsets.ModelViewSet):
         meals = meal_plan.meals.all()
         serializer = MealSerializer(meals, many=True)
         return Response(serializer.data)
-        
