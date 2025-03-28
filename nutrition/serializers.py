@@ -50,16 +50,57 @@ class MealPlanSerializer(serializers.ModelSerializer):
         model = MealPlan
         fields = ['id', 'name', 'goal', 'meals', 'total_calories', 'total_protein', 'total_carbs', 'total_fats']
 
-    def to_representation(self, instance):
+    def create(self, validated_data):
         """
-        Overriding to include calculated totals in the response.
+        Override the create method to handle nested 'meals' data.
         """
-        representation = super().to_representation(instance)
-        representation['total_calories'] = instance.total_calories()
-        representation['total_protein'] = instance.total_protein()
-        representation['total_carbs'] = instance.total_carbs()
-        representation['total_fats'] = instance.total_fats()
-        return representation
+        meals_data = validated_data.pop('meals')  # Extract 'meals' data
+        meal_plan = MealPlan.objects.create(**validated_data)  # Create the MealPlan instance
+
+        # Loop through each meal in the meals data and create a meal
+        for meal_data in meals_data:
+            meal = Meal.objects.create(**meal_data)
+            meal_plan.meals.add(meal)  # Add meal to the meal plan
+
+        return meal_plan
+
+    def update(self, instance, validated_data):
+        """
+        Update the MealPlan instance with validated data.
+        """
+        # Extract meals data from validated_data
+        meals_data = validated_data.pop('meals', [])
+
+        # Update the basic fields first
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        # Update the meals - handle as a nested field
+        meal_instances = []
+
+        # If meals are passed as dictionaries, we need to extract their IDs
+        if meals_data:
+            for meal_data in meals_data:
+                # If meal_data is a dict with fields (id, etc.), get the meal instance by ID
+                if isinstance(meal_data, dict):
+                    meal_instance = Meal.objects.get(id=meal_data['id'])  # Fetch the existing Meal instance
+                    # Update the meal with the new data
+                    for field, value in meal_data.items():
+                        setattr(meal_instance, field, value)
+                    meal_instance.save()
+                    meal_instances.append(meal_instance)
+                else:
+                    # If it's just an ID, we fetch the meal instance by ID
+                    meal_instance = Meal.objects.get(id=meal_data)
+                    meal_instances.append(meal_instance)
+
+        # Set the updated meals to the MealPlan instance
+        instance.meals.set(meal_instances)  # Update the meal relationships
+
+        # Save the updated MealPlan instance
+        instance.save()
+
+        return instance
 
 
 

@@ -876,29 +876,31 @@ class MealPlanSummarySerializerTests(APITestCase):
         """
         Test that the serializer rejects invalid data.
         """
-        # Provide invalid data (negative values)
-        serializer = MealPlanSummarySerializer(data={
+        # Provide invalid data (negative values or zero)
+        invalid_data = {
             'total_calories': -900,  # Invalid negative calories
             'total_protein': -75.0,  # Invalid negative protein
             'total_carbs': -15.0,    # Invalid negative carbs
             'total_fats': -40.0      # Invalid negative fats
-        })
+        }
 
-        # Assert that the serializer is invalid and errors exist
+        serializer = MealPlanSummarySerializer(data=invalid_data)
+        
+        # Assert that the serializer is invalid
         self.assertFalse(serializer.is_valid())
-
-        # Check that the correct errors exist for each field
+        
+        # Check if field-specific validation errors are present
         self.assertIn('total_calories', serializer.errors)
         self.assertIn('total_protein', serializer.errors)
         self.assertIn('total_carbs', serializer.errors)
         self.assertIn('total_fats', serializer.errors)
-
-        # Assert the error messages for each field
-        self.assertEqual(serializer.errors['total_calories'][0], "This field must be a positive value.")
-        self.assertEqual(serializer.errors['total_protein'][0], "This field must be a positive value.")
-        self.assertEqual(serializer.errors['total_carbs'][0], "This field must be a positive value.")
-        self.assertEqual(serializer.errors['total_fats'][0], "This field must be a positive value.")
         
+        # Check that the error message matches the expected one
+        self.assertEqual(serializer.errors['total_calories'][0], 'This field must be a positive value.')
+        self.assertEqual(serializer.errors['total_protein'][0], 'This field must be a positive value.')
+        self.assertEqual(serializer.errors['total_carbs'][0], 'This field must be a positive value.')
+        self.assertEqual(serializer.errors['total_fats'][0], 'This field must be a positive value.')
+
 
     def test_meal_plan_summary_serializer_missing_fields(self):
         """

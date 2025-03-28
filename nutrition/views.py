@@ -97,7 +97,7 @@ class MealPlanViewSet(viewsets.ModelViewSet):
         if goal:
             queryset = queryset.filter(goal=goal)
 
-        # Optional: Annotate with total calories, protein, etc.
+        # Annotate the queryset with total calories, protein, carbs, fats
         queryset = queryset.annotate(
             total_calories=Sum('meals__calories'),
             total_protein=Sum('meals__protein'),
@@ -106,6 +106,36 @@ class MealPlanViewSet(viewsets.ModelViewSet):
         )
 
         return queryset
+
+    def update(self, request, *args, **kwargs):
+        """
+        Update the MealPlan instance with validated data.
+        """
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+
+        # Validate the data
+        serializer.is_valid(raise_exception=True)
+
+        # Handle meal updates (update meal relationships)
+        meals_data = request.data.get('meals', [])
+        
+        # We will extract meal IDs from meals data in case they are dictionaries
+        meal_ids = []
+        for meal in meals_data:
+            # Check if the meal data is a dictionary or just an ID
+            if isinstance(meal, dict) and 'id' in meal:
+                meal_ids.append(meal['id'])  # Add meal ID from the nested data
+            else:
+                meal_ids.append(meal)  # It’s already an ID, add directly
+        
+        # Set the updated meals to the MealPlan instance (using meal IDs)
+        instance.meals.set(meal_ids)
+
+        # Save the updated MealPlan instance
+        instance.save()
+
+        return Response(serializer.data)
 
     @action(detail=True, methods=['get'])
     def meal_summary(self, request, pk=None):
@@ -227,10 +257,6 @@ class MealInMealPlanViewSet(viewsets.ModelViewSet):
             except MealPlan.DoesNotExist:
                 # Handle error if MealPlan is not found
                 raise ValidationError("MealPlan with the provided ID does not exist.")
-
-        # # Optionally, you can add a filter to allow access to only the authenticated user's meal plans
-        # if self.request.user.is_authenticated:
-        #     queryset = queryset.filter(meal_plan__user=self.request.user)
 
         # Prefetch related meals to optimize queries when retrieving meal plans
         queryset = queryset.prefetch_related(
