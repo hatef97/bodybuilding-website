@@ -39,7 +39,7 @@ class MealPlanSerializer(serializers.ModelSerializer):
     """
     Serializer for the MealPlan model, representing a meal plan with a list of meals and its goal.
     """
-    meals = MealSerializer(many=True)
+    meals = MealSerializer(many=True, read_only=True)
 
     total_calories = serializers.IntegerField(read_only=True)
     total_protein = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)

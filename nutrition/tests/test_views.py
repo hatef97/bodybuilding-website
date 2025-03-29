@@ -220,3 +220,5 @@ class MealViewSetTests(APITestCase):
         self.assertEqual(serializer.validated_data['total_protein'], total_protein)
         self.assertEqual(serializer.validated_data['total_carbs'], total_carbs)
         self.assertEqual(serializer.validated_data['total_fats'], total_fats)
+
+
