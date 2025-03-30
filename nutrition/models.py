@@ -3,6 +3,13 @@ from django.core.exceptions import ValidationError
 
 
 
+def validate_positive(value):
+    """Validator to ensure the value is positive (no zero or negative values)."""
+    if value <= 0:
+        raise ValidationError(f"{value} is not a valid value. The value must be positive.")
+
+
+
 class CalorieCalculator(models.Model):
     GENDER_CHOICES = (
         ('male', 'Male'),
@@ -71,10 +78,15 @@ class CalorieCalculator(models.Model):
 class Meal(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(default="No description provided.")
-    calories = models.PositiveIntegerField(default=0, help_text="Calories per serving")
-    protein = models.PositiveIntegerField(default=0, help_text="Protein per serving in grams")
-    carbs = models.PositiveIntegerField(default=0, help_text="Carbs per serving in grams")
-    fat = models.PositiveIntegerField(default=0, help_text="Fat per serving in grams")
+    calories = models.PositiveIntegerField(default=0 ,help_text="Calories per serving")
+    protein = models.PositiveIntegerField(default=0 ,help_text="Protein per serving in grams")
+    carbs = models.PositiveIntegerField(default=0 ,help_text="Carbs per serving in grams")
+    fat = models.PositiveIntegerField(default=0 ,help_text="Fat per serving in grams")
+
+    def clean(self):
+        """Override the clean method to validate"""
+        if self.calories <= 0:
+            raise ValidationError("Calories must be a positive number.")
 
     def __str__(self):
         return self.name
@@ -85,6 +97,14 @@ class Recipe(models.Model):
     meal = models.ForeignKey(Meal, on_delete=models.CASCADE, related_name='recipes')
     instructions = models.TextField()
     ingredients = models.TextField()
+
+    def clean(self):
+        """Override the clean method to validate the length of instructions."""
+        max_length = 500
+        if len(self.instructions) > max_length:
+            raise ValidationError(f"Instructions cannot exceed {max_length} characters.")
+        if len(self.ingredients) > max_length:
+            raise ValidationError(f"Ingredients cannot exceed {max_length} characters.")
 
     def __str__(self):
         return f"Recipe for {self.meal.name}"

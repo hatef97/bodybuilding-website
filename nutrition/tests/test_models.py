@@ -1,753 +1,787 @@
-from decimal import Decimal
-
 from django.test import TestCase
 from django.core.exceptions import ValidationError
 
-from nutrition.models import Meal, MealPlan, MealInMealPlan, Recipe, CalorieCalculator
+from core.models import CustomUser as User
+from nutrition.models import *
 
 
 
-class MealModelTests(TestCase):
+class CalorieCalculatorTestCase(TestCase):
+    
+    def setUp(self):
+        """
+        Create a valid instance of the CalorieCalculator for tests
+        """
+        self.calculator = CalorieCalculator.objects.create(
+            gender='male',
+            age=30,
+            weight=75,
+            height=175,
+            activity_level='moderate_activity'
+        )
+
+
+    def test_calorie_calculation_male(self):
+        """
+        Test the calorie calculation for male with moderate activity.
+        """
+        # Using Harris-Benedict formula:
+        # BMR = 10 * weight + 6.25 * height - 5 * age + 5 (for male)
+        expected_bmr = 10 * self.calculator.weight + 6.25 * self.calculator.height - 5 * self.calculator.age + 5
+        # BMR for moderate activity is multiplied by 1.55
+        expected_calories = expected_bmr * 1.55
+
+        self.assertEqual(self.calculator.calculate_calories(), expected_calories)
+
+
+    def test_calorie_calculation_female(self):
+        """
+        Test the calorie calculation for female with moderate activity.
+        """
+        # Create a female instance
+        female_calculator = CalorieCalculator.objects.create(
+            gender='female',
+            age=30,
+            weight=75,
+            height=175,
+            activity_level='moderate_activity'
+        )
+        
+        # Using Harris-Benedict formula:
+        # BMR = 10 * weight + 6.25 * height - 5 * age - 161 (for female)
+        expected_bmr = 10 * female_calculator.weight + 6.25 * female_calculator.height - 5 * female_calculator.age - 161
+        # BMR for moderate activity is multiplied by 1.55
+        expected_calories = expected_bmr * 1.55
+
+        self.assertEqual(female_calculator.calculate_calories(), expected_calories)
+
+
+    def test_invalid_gender(self):
+        """
+        Test invalid gender input should raise a ValidationError
+        """
+        self.calculator.gender = 'other'
+        with self.assertRaises(ValidationError):
+            self.calculator.clean()  # This should raise a validation error
+
+
+    def test_invalid_activity_level(self):
+        """
+        Test invalid activity level input should raise a ValidationError
+        """
+        self.calculator.activity_level = 'extreme'
+        with self.assertRaises(ValidationError):
+            self.calculator.clean()
+
+
+    def test_negative_age(self):
+        """
+        Test invalid negative age value should raise a ValidationError
+        """
+        self.calculator.age = -1
+        with self.assertRaises(ValidationError):
+            self.calculator.clean()
+
+
+    def test_negative_weight(self):
+        """
+        Test invalid negative weight value should raise a ValidationError
+        """
+        self.calculator.weight = -1
+        with self.assertRaises(ValidationError):
+            self.calculator.clean()
+
+    def test_negative_height(self):
+        """
+        Test invalid negative height value should raise a ValidationError
+        """
+        self.calculator.height = -1
+        with self.assertRaises(ValidationError):
+            self.calculator.clean()
+
+
+    def test_valid_calculator_creation(self):
+        """
+        Test valid creation of a CalorieCalculator instance.
+        """
+        self.assertEqual(self.calculator.gender, 'male')
+        self.assertEqual(self.calculator.age, 30)
+        self.assertEqual(self.calculator.weight, 75)
+        self.assertEqual(self.calculator.height, 175)
+        self.assertEqual(self.calculator.activity_level, 'moderate_activity')
+
+
+    def test_calories_for_sedentary(self):
+        """
+        Test calorie calculation for sedentary activity level
+        """
+        sedentary_calculator = CalorieCalculator.objects.create(
+            gender='male',
+            age=30,
+            weight=75,
+            height=175,
+            activity_level='sedentary'
+        )
+        
+        # Calculate BMR first
+        expected_bmr = 10 * sedentary_calculator.weight + 6.25 * sedentary_calculator.height - 5 * sedentary_calculator.age + 5
+        # For sedentary activity, BMR is multiplied by 1.2
+        expected_calories = expected_bmr * 1.2
+
+        self.assertEqual(sedentary_calculator.calculate_calories(), expected_calories)
+
+
+    def test_calories_for_light_activity(self):
+        """
+        Test calorie calculation for light activity level
+        """
+        light_activity_calculator = CalorieCalculator.objects.create(
+            gender='male',
+            age=30,
+            weight=75,
+            height=175,
+            activity_level='light_activity'
+        )
+        
+        # Calculate BMR first
+        expected_bmr = 10 * light_activity_calculator.weight + 6.25 * light_activity_calculator.height - 5 * light_activity_calculator.age + 5
+        # For light activity, BMR is multiplied by 1.375
+        expected_calories = expected_bmr * 1.375
+
+        self.assertEqual(light_activity_calculator.calculate_calories(), expected_calories)
+
+
+    def test_calories_for_heavy_activity(self):
+        """
+        Test calorie calculation for heavy activity level
+        """
+        heavy_activity_calculator = CalorieCalculator.objects.create(
+            gender='male',
+            age=30,
+            weight=75,
+            height=175,
+            activity_level='heavy_activity'
+        )
+        
+        # Calculate BMR first
+        expected_bmr = 10 * heavy_activity_calculator.weight + 6.25 * heavy_activity_calculator.height - 5 * heavy_activity_calculator.age + 5
+        # For heavy activity, BMR is multiplied by 1.725
+        expected_calories = expected_bmr * 1.725
+
+        self.assertEqual(heavy_activity_calculator.calculate_calories(), expected_calories)
+
+
+    def test_create_calorie_calculator_with_invalid_gender(self):
+        """
+        Test creation of CalorieCalculator with invalid gender
+        """
+        invalid_gender_calculator = CalorieCalculator(
+            gender='unknown',  # Invalid gender
+            age=30,
+            weight=75,
+            height=175,
+            activity_level='moderate_activity'
+        )
+        with self.assertRaises(ValidationError):
+            invalid_gender_calculator.clean()
+
+
+    def test_create_calorie_calculator_with_invalid_activity_level(self):
+        """
+        Test creation of CalorieCalculator with invalid activity level
+        """
+        invalid_activity_level_calculator = CalorieCalculator(
+            gender='male',
+            age=30,
+            weight=75,
+            height=175,
+            activity_level='unknown'
+        )
+        with self.assertRaises(ValidationError):
+            invalid_activity_level_calculator.clean()
+
+
+    def test_str_method(self):
+        """
+        Test the string representation of the CalorieCalculator model.
+        """
+        self.assertEqual(str(self.calculator), "Calorie Calculation for male (30 years)")
+
+
+
+class MealTestCase(TestCase):
 
     def setUp(self):
-        self.valid_data = {
-            "name": "Grilled Chicken Salad",
-            "calories": 450,
-            "protein": Decimal("35.5"),
-            "carbs": Decimal("20.25"),
-            "fats": Decimal("15.00"),
-            "description": "A healthy meal with grilled chicken, lettuce, and vinaigrette."
-        }
+        """
+        Create a valid instance of the Meal model for tests.
+        """
+        self.meal = Meal.objects.create(
+            name="Chicken Salad",
+            description="A healthy chicken salad",
+            calories=250,
+            protein=30,
+            carbs=15,
+            fat=10
+        )
 
 
-    def test_meal_creation_success(self):
-        """
-        Test creating a Meal with valid data.
-        """
-        meal = Meal.objects.create(**self.valid_data)
-        self.assertEqual(meal.name, "Grilled Chicken Salad")
-        self.assertEqual(meal.calories, 450)
-        self.assertEqual(meal.protein, Decimal("35.5"))
-        self.assertEqual(meal.carbs, Decimal("20.25"))
-        self.assertEqual(meal.fats, Decimal("15.00"))
-        self.assertEqual(str(meal), "Grilled Chicken Salad")
+    def test_meal_creation(self):
+        """Test the creation of a Meal instance."""
+        self.assertEqual(self.meal.name, "Chicken Salad")
+        self.assertEqual(self.meal.description, "A healthy chicken salad")
+        self.assertEqual(self.meal.calories, 250)
+        self.assertEqual(self.meal.protein, 30)
+        self.assertEqual(self.meal.carbs, 15)
+        self.assertEqual(self.meal.fat, 10)
+
+
+    def test_meal_default_description(self):
+        """Test that a meal created without a description has the default description."""
+        meal_without_description = Meal.objects.create(
+            name="Rice",
+            calories=200,
+            protein=5,
+            carbs=40,
+            fat=1
+        )
+        self.assertEqual(meal_without_description.description, "No description provided.")
+
+
+    def test_invalid_calories(self):
+        """Test that invalid (negative) values for calories raise a validation error."""
+        with self.assertRaises(ValidationError):
+            meal_invalid_calories = Meal(name="Invalid Meal", calories=-100, protein=10, carbs=20, fat=5)
+            meal_invalid_calories.full_clean()  # This should raise a validation error for negative calories
+
+
+    def test_invalid_protein(self):
+        """Test that invalid (negative) values for protein raise a validation error."""
+        with self.assertRaises(ValidationError):
+            meal_invalid_protein = Meal(name="Invalid Meal", calories=200, protein=-10, carbs=20, fat=5)
+            meal_invalid_protein.full_clean()  # This should raise a validation error for negative protein
+
+
+    def test_invalid_carbs(self):
+        """Test that invalid (negative) values for carbs raise a validation error."""
+        with self.assertRaises(ValidationError):
+            meal_invalid_carbs = Meal(name="Invalid Meal", calories=200, protein=10, carbs=-20, fat=5)
+            meal_invalid_carbs.full_clean()  # This should raise a validation error for negative carbs
+
+
+    def test_invalid_fat(self):
+        """Test that invalid (negative) values for fat raise a validation error."""
+        with self.assertRaises(ValidationError):
+            meal_invalid_fat = Meal(name="Invalid Meal", calories=200, protein=10, carbs=20, fat=-5)
+            meal_invalid_fat.full_clean()  # This should raise a validation error for negative fat
 
 
     def test_meal_string_representation(self):
-        """
-        Test that __str__ returns the name of the meal.
-        """
-        meal = Meal.objects.create(**self.valid_data)
-        self.assertEqual(str(meal), meal.name)
+        """Test the string representation of the Meal model."""
+        self.assertEqual(str(self.meal), "Chicken Salad")
 
 
-    def test_meal_description_optional(self):
-        """
-        Test creating a meal without a description.
-        """
-        self.valid_data.pop("description")
-        meal = Meal.objects.create(**self.valid_data)
-        self.assertEqual(meal.description, None)
+    def test_calories_validation(self):
+        """Test that a Meal with zero calories should raise a validation error."""
+        meal_with_zero_calories = Meal(name="Zero Calorie Meal", calories=0, protein=5, carbs=10, fat=2)
+        with self.assertRaises(ValidationError):
+            meal_with_zero_calories.full_clean()  # This should raise a validation error for zero calories
 
 
-    def test_negative_calories_rejected(self):
-        """
-        Negative calories should raise an error.
-        """
-        self.valid_data["calories"] = -100
-        with self.assertRaises(Exception):
-            Meal.objects.create(**self.valid_data)
+    def test_meal_name_length(self):
+        """Test that the meal name length does not exceed the maximum allowed length."""
+        long_name = "A" * 256  # Name exceeding max length
+        meal_with_long_name = Meal(name=long_name, description="Long name test", calories=200, protein=10, carbs=20, fat=5)
+        with self.assertRaises(ValidationError):
+            meal_with_long_name.full_clean()  # This should raise a validation error due to name length
 
 
-    def test_negative_macronutrients_rejected(self):
-        """
-        Negative protein/carbs/fats should raise an error.
-        """
-        fields = ["protein", "carbs", "fats"]
-        for field in fields:
-            data = {
-                "name": "Test Meal",
-                "calories": 500,
-                "protein": Decimal("10.5"),
-                "carbs": Decimal("20.5"),
-                "fats": Decimal("10.0"),
-                "description": "Test meal description"
-            }
-            data[field] = Decimal("-5.0")  # Set negative value for each field
-            meal = Meal(**data)
-            with self.assertRaises(ValidationError, msg=f"{field} should not accept negative values"):
-                meal.clean() 
+    def test_save_meal(self):
+        """Test saving a valid Meal instance to the database."""
+        meal = Meal(name="Salmon", description="Grilled salmon with veggies", calories=300, protein=25, carbs=10, fat=15)
+        meal.save()
+        saved_meal = Meal.objects.get(id=meal.id)
+        self.assertEqual(saved_meal.name, "Salmon")
+        self.assertEqual(saved_meal.description, "Grilled salmon with veggies")
+        self.assertEqual(saved_meal.calories, 300)
+        self.assertEqual(saved_meal.protein, 25)
+        self.assertEqual(saved_meal.carbs, 10)
+        self.assertEqual(saved_meal.fat, 15)
 
 
-    def test_verbose_name_meta(self):
-        """
-        Test model Meta options for verbose_name and verbose_name_plural.
-        """
-        self.assertEqual(Meal._meta.verbose_name, "Meal")
-        self.assertEqual(Meal._meta.verbose_name_plural, "Meals")
+    def test_meal_calories_default(self):
+        """Test that the default calories value is correctly set when not provided."""
+        meal_without_calories = Meal.objects.create(
+            name="Tofu Stir-Fry",
+            description="A delicious vegetarian stir-fry",
+            protein=20,
+            carbs=30,
+            fat=10
+        )
+        self.assertEqual(meal_without_calories.calories, 0)  # Default should be 0
+
+
+    def test_meal_fat_default(self):
+        """Test that the default fat value is correctly set when not provided."""
+        meal_without_fat = Meal.objects.create(
+            name="Vegetable Soup",
+            description="A healthy vegetable soup",
+            calories=150,
+            protein=5,
+            carbs=20
+        )
+        self.assertEqual(meal_without_fat.fat, 0)  # Default should be 0
 
 
 
-class MealPlanModelTests(TestCase):
+class RecipeTestCase(TestCase):
 
     def setUp(self):
         """
-        Set up the initial data for tests.
+        Create valid instances of Meal and Recipe models for testing.
         """
-        # Create some sample meals
-        self.meal_1 = Meal.objects.create(
+        # Create a Meal instance that will be used in the Recipe
+        self.meal = Meal.objects.create(
             name="Chicken Salad",
-            calories=400,
-            protein=35,
-            carbs=10,
-            fats=15,
-            description="A healthy chicken salad."
+            description="A healthy chicken salad",
+            calories=250,
+            protein=30,
+            carbs=15,
+            fat=10
         )
-        self.meal_2 = Meal.objects.create(
-            name="Grilled Salmon",
-            calories=500,
-            protein=40,
-            carbs=5,
-            fats=25,
-            description="Grilled salmon with vegetables."
+        
+        # Create a Recipe instance associated with the Meal
+        self.recipe = Recipe.objects.create(
+            meal=self.meal,
+            instructions="Mix ingredients together.",
+            ingredients="Chicken, lettuce, olive oil"
         )
-        # Create a Meal Plan with these meals
+
+
+    def test_recipe_creation(self):
+        """
+        Test the creation of a Recipe instance and verify all fields.
+        """
+        self.assertEqual(self.recipe.meal.name, "Chicken Salad")
+        self.assertEqual(self.recipe.instructions, "Mix ingredients together.")
+        self.assertEqual(self.recipe.ingredients, "Chicken, lettuce, olive oil")
+
+
+    def test_recipe_string_representation(self):
+        """
+        Test the string representation of the Recipe model.
+        """
+        self.assertEqual(str(self.recipe), "Recipe for Chicken Salad")
+
+
+    def test_recipe_meal_relationship(self):
+        """
+        Test the relationship between Recipe and Meal.
+        """
+        meal_in_recipe = self.recipe.meal
+        self.assertEqual(meal_in_recipe.name, "Chicken Salad")  # The meal should be correctly linked
+        self.assertTrue(self.recipe.meal.recipes.filter(id=self.recipe.id).exists())  # Ensure reverse relationship works
+
+
+    def test_missing_meal(self):
+        """
+        Test that a Recipe cannot be created without a related Meal.
+        """
+        with self.assertRaises(ValidationError):
+            recipe_without_meal = Recipe(
+                meal=None,
+                instructions="Instructions here",
+                ingredients="Ingredients here"
+            )
+            recipe_without_meal.full_clean()  # This should raise a ValidationError because 'meal' is required.
+
+
+    def test_recipe_instructions_length(self):
+        """
+        Test that the length of the instructions is reasonable and doesn't exceed a maximum length (e.g., 500).
+        """
+        long_instructions = "A" * 501  # Exceeding max length
+        recipe_with_long_instructions = Recipe(
+            meal=self.meal,
+            instructions=long_instructions,
+            ingredients="Chicken, lettuce, olive oil"
+        )
+        with self.assertRaises(ValidationError):
+            recipe_with_long_instructions.full_clean()  # This should raise a validation error due to instruction length
+
+
+    def test_recipe_ingredients_length(self):
+        """
+        Test that the length of ingredients is reasonable and doesn't exceed a maximum length (e.g., 500).
+        """
+        long_ingredients = "A" * 501  # Exceeding max length
+        recipe_with_long_ingredients = Recipe(
+            meal=self.meal,
+            instructions="Instructions here",
+            ingredients=long_ingredients
+        )
+        with self.assertRaises(ValidationError):
+            recipe_with_long_ingredients.full_clean()  # This should raise a validation error due to ingredient length
+
+
+    def test_recipe_save(self):
+        """
+        Test saving a valid Recipe instance to the database and ensuring it can be retrieved.
+        """
+        saved_recipe = Recipe.objects.get(id=self.recipe.id)
+        self.assertEqual(saved_recipe.meal.name, "Chicken Salad")
+        self.assertEqual(saved_recipe.instructions, "Mix ingredients together.")
+        self.assertEqual(saved_recipe.ingredients, "Chicken, lettuce, olive oil")
+
+
+    def test_reverse_recipe_lookup(self):
+        """
+        Test that we can retrieve recipes related to a meal.
+        """
+        # Create another recipe linked to the same meal
+        another_recipe = Recipe.objects.create(
+            meal=self.meal,
+            instructions="Grill chicken and serve.",
+            ingredients="Chicken, salt, pepper"
+        )
+        # Check if we can retrieve both recipes through the meal's related name 'recipes'
+        recipes_for_meal = self.meal.recipes.all()
+        self.assertEqual(recipes_for_meal.count(), 2)  # Should return 2 recipes
+        self.assertTrue(another_recipe in recipes_for_meal)  # The new recipe should be in the result
+
+
+
+class MealPlanTestCase(TestCase):
+
+    def setUp(self):
+        """
+        Create valid instances of Meal, MealPlan, and a CustomUser for testing.
+        """
+        # Create a CustomUser instance
+        self.user = User.objects.create_user(
+            email='user@mail.com',
+            username='admin1',
+            password='userpassword'
+            )
+        
+        # Create a Meal instance to associate with the MealPlan
+        self.meal = Meal.objects.create(
+            name="Chicken Salad",
+            description="A healthy chicken salad",
+            calories=250,
+            protein=30,
+            carbs=15,
+            fat=10
+        )
+
+        # Create a MealPlan instance associated with the CustomUser and Meal
         self.meal_plan = MealPlan.objects.create(
-            name="Bulking Meal Plan",
-            goal="bulking"
+            user=self.user,
+            name="Weekly Plan",
+            description="A plan with healthy meals"
         )
-        # Add meals to the plan with 'order' specified
-        MealInMealPlan.objects.create(meal=self.meal_1, meal_plan=self.meal_plan, order=1)
-        MealInMealPlan.objects.create(meal=self.meal_2, meal_plan=self.meal_plan, order=2)
+
+        # Add the meal to the MealPlan using the through table
+        MealInMealPlan.objects.create(meal_plan=self.meal_plan, meal=self.meal, quantity=2)
 
 
-    def test_meal_plan_str(self):
+    def test_meal_plan_creation(self):
+        """
+        Test the creation of a MealPlan instance and verify all fields.
+        """
+        self.assertEqual(self.meal_plan.name, "Weekly Plan")
+        self.assertEqual(self.meal_plan.user.username, "admin1")
+        self.assertEqual(self.meal_plan.description, "A plan with healthy meals")
+        self.assertEqual(self.meal_plan.meals.count(), 1)  # One meal should be associated with the plan
+
+
+    def test_meal_plan_string_representation(self):
         """
         Test the string representation of the MealPlan model.
         """
-        self.assertEqual(str(self.meal_plan), "Bulking Meal Plan (Bulking)")
+        self.assertEqual(str(self.meal_plan), "Weekly Plan")
 
 
-    def test_total_calories(self):
+    def test_meal_plan_user_relationship(self):
         """
-        Test that total calories calculation is correct for the Meal Plan.
+        Test the relationship between MealPlan and CustomUser.
         """
-        total_calories = self.meal_plan.total_calories()
-        self.assertEqual(total_calories, 400 + 500)  # 400 from meal_1 + 500 from meal_2
+        meal_plan_user = self.meal_plan.user
+        self.assertEqual(meal_plan_user.username, "admin1")  # The user should be correctly linked
+        self.assertTrue(self.user.meal_plans.filter(id=self.meal_plan.id).exists())  # Ensure reverse relationship works
 
 
-    def test_total_protein(self):
+    def test_missing_user(self):
         """
-        Test that total protein calculation is correct for the Meal Plan.
+        Test that a MealPlan cannot be created without a related user.
         """
-        total_protein = self.meal_plan.total_protein()
-        self.assertEqual(total_protein, 35 + 40)  # 35 from meal_1 + 40 from meal_2
-
-
-    def test_total_carbs(self):
-        """
-        Test that total carbs calculation is correct for the Meal Plan.
-        """
-        total_carbs = self.meal_plan.total_carbs()
-        self.assertEqual(total_carbs, 10 + 5)  # 10 from meal_1 + 5 from meal_2
-
-
-    def test_total_fats(self):
-        """
-        Test that total fats calculation is correct for the Meal Plan.
-        """
-        total_fats = self.meal_plan.total_fats()
-        self.assertEqual(total_fats, 15 + 25)  # 15 from meal_1 + 25 from meal_2
-
-
-    def test_goal_choices(self):
-        """
-        Test the available goal choices for the Meal Plan.
-        """
-        valid_goals = ['bulking', 'cutting', 'maintenance']
-        for goal in valid_goals:
-            meal_plan = MealPlan.objects.create(name=f"{goal.capitalize()} Plan", goal=goal)
-            self.assertEqual(meal_plan.goal, goal)
-
-
-    def test_goal_display(self):
-        """
-        Test the get_goal_display method for Meal Plan.
-        """
-        self.assertEqual(self.meal_plan.get_goal_display(), "Bulking")
-
-
-    def test_meal_plan_empty_meal_list(self):
-        """
-        Test Meal Plan when no meals are added. Should return 0 for all nutritional values.
-        """
-        empty_meal_plan = MealPlan.objects.create(
-            name="Empty Meal Plan",
-            goal="cutting"
-        )
-        self.assertEqual(empty_meal_plan.total_calories(), 0)
-        self.assertEqual(empty_meal_plan.total_protein(), 0)
-        self.assertEqual(empty_meal_plan.total_carbs(), 0)
-        self.assertEqual(empty_meal_plan.total_fats(), 0)
-
-
-    def test_meal_plan_add_meal(self):
-        """
-        Test adding a new meal to the Meal Plan and recalculating total values.
-        """
-        # Add meals to the meal plan, specifying order
-        self.meal_plan.meals.add(self.meal_1, through_defaults={'order': 1})
-        self.meal_plan.meals.add(self.meal_2, through_defaults={'order': 2})
-        
-        # Ensure the total calories, protein, carbs, and fats are calculated correctly
-        self.assertEqual(self.meal_plan.total_calories(), 500 + 400)  # Total calories should be sum of meal calories
-        self.assertEqual(self.meal_plan.total_protein(), Decimal('35.00') + Decimal('40.00'))  # Total protein should be sum of protein content
-        self.assertEqual(self.meal_plan.total_carbs(), Decimal('10.00') + Decimal('5.00'))  # Total carbs should be sum of carbs content
-        self.assertEqual(self.meal_plan.total_fats(), Decimal('15.00') + Decimal('25.00'))  # Total fats should be sum of fat content
-
-
-    def test_meal_plan_remove_meal(self):
-        """
-        Test removing a meal from the Meal Plan and recalculating total values.
-        """
-        self.meal_plan.meals.remove(self.meal_2)  # Remove the second meal (Grilled Salmon)
-        
-        # Recalculate totals after removing the meal
-        self.assertEqual(self.meal_plan.total_calories(), 400)  # Only meal_1 remains
-        self.assertEqual(self.meal_plan.total_protein(), 35)
-        self.assertEqual(self.meal_plan.total_carbs(), 10)
-        self.assertEqual(self.meal_plan.total_fats(), 15)
-
-
-    def test_meal_plan_unique_name(self):
-        """
-        Test that meal plans with the same name can exist if the goal is different.
-        """
-        new_meal_plan = MealPlan.objects.create(
-            name="Bulking Meal Plan",  # Same name as the existing plan
-            goal="cutting"  # Different goal, so should be allowed
-        )
-        self.assertEqual(new_meal_plan.name, "Bulking Meal Plan")
-        self.assertEqual(new_meal_plan.goal, "cutting")
-
-
-    def test_invalid_goal(self):
-        """
-        Test that providing an invalid goal value raises an error.
-        """
-        invalid_goal = "invalid_goal"  # This goal is not in the defined choices
-
-        # Create a MealPlan instance without saving it to the database
-        meal_plan = MealPlan(name="Invalid Goal Plan", goal=invalid_goal)
-
-        # Try to call full_clean to trigger validation
         with self.assertRaises(ValidationError):
-            meal_plan.full_clean() 
+            meal_plan_without_user = MealPlan(
+                user=None,
+                name="Invalid Plan",
+                description="This plan has no user"
+            )
+            meal_plan_without_user.full_clean()  # This should raise a validation error because 'user' is required.
+
+
+    def test_meal_plan_name_length(self):
+        """
+        Test that the name length of the MealPlan does not exceed the maximum allowed length.
+        """
+        long_name = "A" * 256  # Exceeding max length (255 characters)
+        meal_plan_with_long_name = MealPlan(
+            user=self.user,
+            name=long_name,
+            description="A long name test",
+        )
+        with self.assertRaises(ValidationError):
+            meal_plan_with_long_name.full_clean()  # This should raise a validation error due to name length
+
+
+    def test_add_meal_to_meal_plan(self):
+        """
+        Test adding a meal to a MealPlan and ensure the relationship works.
+        """
+        new_meal = Meal.objects.create(
+            name="Tofu Stir-Fry",
+            description="A delicious vegetarian stir-fry",
+            calories=300,
+            protein=20,
+            carbs=25,
+            fat=12
+        )
+        
+        # Add the new meal to the meal plan
+        self.meal_plan.meals.add(new_meal)
+
+        # Check if the meal is correctly associated with the plan
+        self.assertEqual(self.meal_plan.meals.count(), 2)  # The meal plan should have 2 meals now
+
+
+    def test_reverse_meal_plan_lookup(self):
+        """
+        Test reverse lookup from a user to their associated MealPlans.
+        """
+        meal_plans_for_user = self.user.meal_plans.all()
+        self.assertEqual(meal_plans_for_user.count(), 1)  # There should be only 1 MealPlan for the user
+        self.assertTrue(self.meal_plan in meal_plans_for_user)  # The created MealPlan should be in the user's MealPlans
+
+
+    def test_remove_meal_from_meal_plan(self):
+        """
+        Test removing a meal from a MealPlan.
+        """
+        new_meal = Meal.objects.create(
+            name="Tofu Stir-Fry",
+            description="A delicious vegetarian stir-fry",
+            calories=300,
+            protein=20,
+            carbs=25,
+            fat=12
+        )
+        
+        # Add the new meal to the meal plan
+        self.meal_plan.meals.add(new_meal)
+        
+        # Remove the meal from the plan
+        self.meal_plan.meals.remove(new_meal)
+
+        # Ensure the meal has been removed from the meal plan
+        self.assertEqual(self.meal_plan.meals.count(), 1)  # Only the initial meal should remain in the plan
+
+
+    def test_meal_plan_description_default(self):
+        """
+        Test that the default description value is correctly set when not provided.
+        """
+        meal_plan_without_description = MealPlan.objects.create(
+            user=self.user,
+            name="Simple Plan"
+        )
+        self.assertEqual(meal_plan_without_description.description, "No description provided.")  # Default should be set
+
+
+    def test_meal_plan_save(self):
+        """
+        Test saving a valid MealPlan instance to the database.
+        """
+        saved_meal_plan = MealPlan.objects.get(id=self.meal_plan.id)
+        self.assertEqual(saved_meal_plan.name, "Weekly Plan")
+        self.assertEqual(saved_meal_plan.description, "A plan with healthy meals")
+        self.assertEqual(saved_meal_plan.user.username, "admin1")
+        self.assertEqual(saved_meal_plan.meals.count(), 1)  # Ensure the meal is saved with the plan
 
 
 
-class MealInMealPlanModelTests(TestCase):
+class MealInMealPlanTestCase(TestCase):
 
     def setUp(self):
         """
-        Set up initial test data for MealInMealPlan.
+        Create valid instances of Meal, MealPlan, and CustomUser for testing.
         """
-        # Create some sample meals
-        self.meal_1 = Meal.objects.create(
+        # Create a CustomUser instance
+        self.user = User.objects.create_user(
+            email='user@mail.com',
+            username='user',
+            password='userpassword'
+            )
+        
+        # Create a Meal instance to associate with the MealInMealPlan
+        self.meal = Meal.objects.create(
             name="Chicken Salad",
-            calories=400,
-            protein=Decimal('35.00'),
-            carbs=Decimal('10.00'),
-            fats=Decimal('15.00'),
-            description="A healthy chicken salad."
+            description="A healthy chicken salad",
+            calories=250,
+            protein=30,
+            carbs=15,
+            fat=10
         )
-        self.meal_2 = Meal.objects.create(
-            name="Grilled Salmon",
-            calories=500,
-            protein=Decimal('40.00'),
-            carbs=Decimal('5.00'),
-            fats=Decimal('25.00'),
-            description="Grilled salmon with vegetables."
-        )
-        # Create a Meal Plan
+        
+        # Create a MealPlan instance associated with the CustomUser and Meal
         self.meal_plan = MealPlan.objects.create(
-            name="Bulking Meal Plan",
-            goal="bulking"
+            user=self.user,
+            name="Weekly Plan",
+            description="A plan with healthy meals"
         )
-
-
-    def test_create_meal_in_meal_plan(self):
-        """
-        Test that a MealInMealPlan instance can be created correctly.
-        """
-        # Create the MealInMealPlan instance with an order
-        meal_in_plan = MealInMealPlan.objects.create(
+        
+        # Create a MealInMealPlan instance
+        self.meal_in_plan = MealInMealPlan.objects.create(
             meal_plan=self.meal_plan,
-            meal=self.meal_1,
-            order=1
+            meal=self.meal,
+            quantity=2
         )
 
-        # Check if the instance was created successfully
-        self.assertEqual(meal_in_plan.meal_plan, self.meal_plan)
-        self.assertEqual(meal_in_plan.meal, self.meal_1)
-        self.assertEqual(meal_in_plan.order, 1)
 
-
-    def test_ordering_of_meals_in_plan(self):
+    def test_meal_in_meal_plan_creation(self):
         """
-        Test that the meals are ordered correctly in the meal plan.
+        Test the creation of a MealInMealPlan instance and verify all fields.
         """
-        # Create the MealInMealPlan instances
-        meal_in_plan_1 = MealInMealPlan.objects.create(
-            meal_plan=self.meal_plan,
-            meal=self.meal_1,
-            order=1
-        )
-        meal_in_plan_2 = MealInMealPlan.objects.create(
-            meal_plan=self.meal_plan,
-            meal=self.meal_2,
-            order=2
-        )
+        self.assertEqual(self.meal_in_plan.meal_plan.name, "Weekly Plan")
+        self.assertEqual(self.meal_in_plan.meal.name, "Chicken Salad")
+        self.assertEqual(self.meal_in_plan.quantity, 2)
 
-        # Retrieve the meal plan and check the order of meals
-        meal_plan = MealPlan.objects.get(id=self.meal_plan.id)
-        meal_in_meal_plan = meal_plan.meals.all().order_by('mealinmealplan__order')
 
-        self.assertEqual(meal_in_meal_plan[0], self.meal_1)
-        self.assertEqual(meal_in_meal_plan[1], self.meal_2)
+    def test_meal_in_meal_plan_string_representation(self):
+        """
+        Test the string representation of the MealInMealPlan model.
+        """
+        self.assertEqual(str(self.meal_in_plan), "Chicken Salad in Weekly Plan")
 
 
     def test_unique_together_constraint(self):
         """
-        Test that the same meal cannot be added twice to the same meal plan.
+        Test that the combination of meal and meal_plan is unique.
         """
-        # Create the MealInMealPlan instance
-        MealInMealPlan.objects.create(
-            meal_plan=self.meal_plan,
-            meal=self.meal_1,
-            order=1
+        with self.assertRaises(ValidationError):
+            # Create a duplicate MealInMealPlan for the same meal and meal_plan
+            duplicate_meal_in_plan = MealInMealPlan(
+                meal_plan=self.meal_plan,
+                meal=self.meal,
+                quantity=3
+            )
+            duplicate_meal_in_plan.full_clean()  # This should raise a validation error
+
+
+    def test_meal_in_meal_plan_relationship_with_meal_plan(self):
+        """
+        Test the relationship between MealInMealPlan and MealPlan.
+        """
+        meal_in_plan = MealInMealPlan.objects.get(id=self.meal_in_plan.id)
+        self.assertEqual(meal_in_plan.meal_plan.name, "Weekly Plan")
+        self.assertTrue(self.meal_plan.meals.filter(id=self.meal.id).exists())  # Ensure reverse relationship works
+
+
+    def test_meal_in_meal_plan_relationship_with_meal(self):
+        """
+        Test the relationship between MealInMealPlan and Meal.
+        """
+        # Retrieve the MealInMealPlan instance linked to the meal
+        meal_in_plan = MealInMealPlan.objects.get(id=self.meal_in_plan.id)
+        
+        # Check if the meal is associated with the MealInMealPlan instance
+        self.assertEqual(meal_in_plan.meal.name, "Chicken Salad")
+        
+        # Ensure that we can access the MealInMealPlan instance from the Meal
+        self.assertTrue(meal_in_plan.meal.mealinmealplan_set.filter(id=self.meal_in_plan.id).exists())  # Reverse relationship
+
+
+    def test_invalid_quantity(self):
+        """
+        Test that invalid (negative or zero) values for quantity raise a validation error.
+        """
+        with self.assertRaises(ValidationError):
+            invalid_quantity = MealInMealPlan(
+                meal_plan=self.meal_plan,
+                meal=self.meal,
+                quantity=-2
+            )
+            invalid_quantity.full_clean()  # This should raise a validation error for negative quantity
+
+        with self.assertRaises(ValidationError):
+            invalid_quantity_zero = MealInMealPlan(
+                meal_plan=self.meal_plan,
+                meal=self.meal,
+                quantity=0
+            )
+            invalid_quantity_zero.full_clean()  # This should raise a validation error for zero quantity
+
+
+    def test_save_meal_in_meal_plan(self):
+        """
+        Test saving a valid MealInMealPlan instance to the database and ensuring it can be retrieved.
+        """
+        saved_meal_in_plan = MealInMealPlan.objects.get(id=self.meal_in_plan.id)
+        self.assertEqual(saved_meal_in_plan.meal.name, "Chicken Salad")
+        self.assertEqual(saved_meal_in_plan.meal_plan.name, "Weekly Plan")
+        self.assertEqual(saved_meal_in_plan.quantity, 2)
+
+
+    def test_add_meal_to_meal_plan(self):
+        """
+        Test adding a meal to a MealPlan through the MealInMealPlan model.
+        """
+        # Create a new meal
+        new_meal = Meal.objects.create(
+            name="Tofu Stir-Fry",
+            description="A delicious vegetarian stir-fry",
+            calories=300,
+            protein=20,
+            carbs=25,
+            fat=12
         )
 
-        # Attempt to create the same meal in the same meal plan again
-        with self.assertRaises(Exception):  # Should raise an IntegrityError due to unique_together constraint
-            MealInMealPlan.objects.create(
-                meal_plan=self.meal_plan,
-                meal=self.meal_1,
-                order=2
-            )
-
-
-    def test_str_method(self):
-        """
-        Test the string representation of the MealInMealPlan model.
-        """
-        # Create the MealInMealPlan instance
+        # Create a new MealInMealPlan to link the meal to the meal plan
         meal_in_plan = MealInMealPlan.objects.create(
             meal_plan=self.meal_plan,
-            meal=self.meal_1,
-            order=1
+            meal=new_meal,
+            quantity=3
         )
 
-        # Check the string representation
-        self.assertEqual(str(meal_in_plan), "Chicken Salad in Bulking Meal Plan")
-
-
-    def test_meal_plan_total_calories_with_meals(self):
-        """
-        Test that adding meals to a plan updates the total calories correctly.
-        """
-        # Add meals to the meal plan
-        self.meal_plan.meals.add(self.meal_1, through_defaults={'order': 1})
-        self.meal_plan.meals.add(self.meal_2, through_defaults={'order': 2})
-
-        # Check if the total calories are correctly calculated
-        self.assertEqual(self.meal_plan.total_calories(), 400 + 500)  # Total calories should be sum of meal calories
-
-
-    def test_meal_plan_total_macronutrients_with_meals(self):
-        """
-        Test that adding meals to a plan updates the total macronutrients correctly.
-        """
-        # Add meals to the meal plan
-        self.meal_plan.meals.add(self.meal_1, through_defaults={'order': 1})
-        self.meal_plan.meals.add(self.meal_2, through_defaults={'order': 2})
-
-        # Check if the total macronutrients are correctly calculated
-        self.assertEqual(self.meal_plan.total_protein(), Decimal('35.00') + Decimal('40.00'))
-        self.assertEqual(self.meal_plan.total_carbs(), Decimal('10.00') + Decimal('5.00'))
-        self.assertEqual(self.meal_plan.total_fats(), Decimal('15.00') + Decimal('25.00'))
-
-
-
-class RecipeModelTests(TestCase):
-    
-    def setUp(self):
-        """
-        Set up initial test data for the Recipe model.
-        """
-        # Create a sample recipe
-        self.recipe_1 = Recipe.objects.create(
-            name="Chicken Stir Fry",
-            ingredients="Chicken, Soy Sauce, Vegetables, Garlic, Ginger",
-            instructions="Cook chicken, stir-fry with vegetables, add soy sauce.",
-            calories=350,
-            protein=25.50,
-            carbs=30.00,
-            fats=10.00
-        )
-
-
-    def test_create_recipe(self):
-        """
-        Test that a Recipe instance can be created with valid data.
-        """
-        recipe = self.recipe_1
-        self.assertEqual(recipe.name, "Chicken Stir Fry")
-        self.assertEqual(recipe.ingredients, "Chicken, Soy Sauce, Vegetables, Garlic, Ginger")
-        self.assertEqual(recipe.instructions, "Cook chicken, stir-fry with vegetables, add soy sauce.")
-        self.assertEqual(recipe.calories, 350)
-        self.assertEqual(recipe.protein, Decimal('25.50'))
-        self.assertEqual(recipe.carbs, Decimal('30.00'))
-        self.assertEqual(recipe.fats, Decimal('10.00'))
-
-
-    def test_str_method(self):
-        """
-        Test the string representation of the Recipe model.
-        """
-        recipe = self.recipe_1
-        self.assertEqual(str(recipe), "Chicken Stir Fry")
-
-
-    def test_positive_calories(self):
-        """
-        Test that calories should be positive.
-        """
-        recipe = Recipe(name="Test Recipe", ingredients="Test Ingredients", instructions="Test Instructions",
-                        calories=500, protein=25.5, carbs=50.0, fats=15.0)
-        recipe.save()
-        self.assertGreater(recipe.calories, 0, "Calories must be a positive number.")
-
-
-    def test_positive_protein(self):
-        """
-        Test that protein should be positive.
-        """
-        recipe = Recipe(name="Test Recipe", ingredients="Test Ingredients", instructions="Test Instructions",
-                        calories=500, protein=20.0, carbs=50.0, fats=15.0)
-        recipe.save()
-        self.assertGreater(recipe.protein, 0, "Protein must be a positive number.")
-
-
-    def test_positive_carbs(self):
-        """
-        Test that carbs should be positive.
-        """
-        recipe = Recipe(name="Test Recipe", ingredients="Test Ingredients", instructions="Test Instructions",
-                        calories=500, protein=20.0, carbs=30.0, fats=15.0)
-        recipe.save()
-        self.assertGreater(recipe.carbs, 0, "Carbs must be a positive number.")
-
-
-    def test_positive_fats(self):
-        """
-        Test that fats should be positive.
-        """
-        recipe = Recipe(name="Test Recipe", ingredients="Test Ingredients", instructions="Test Instructions",
-                        calories=500, protein=20.0, carbs=30.0, fats=10.0)
-        recipe.save()
-        self.assertGreater(recipe.fats, 0, "Fats must be a positive number.")
-
-
-    def test_invalid_negative_calories(self):
-        """
-        Test that negative calories raise an error.
-        """
-        recipe = Recipe(
-            name="Test Invalid Recipe",
-            ingredients="Test Ingredients",
-            instructions="Test Instructions",
-            calories=-1,  # Negative value
-            protein=20.0,
-            carbs=30.0,
-            fats=10.0
-        )
-        with self.assertRaises(ValidationError):
-            recipe.clean() 
-
-
-    def test_invalid_negative_protein(self):
-        """
-        Test that negative protein raises an error.
-        """
-        recipe = Recipe(
-            name="Test Invalid Recipe",
-            ingredients="Test Ingredients",
-            instructions="Test Instructions",
-            calories=500,
-            protein=-5.0,  # Negative value
-            carbs=30.0,
-            fats=10.0
-        )
-        with self.assertRaises(ValidationError):
-            recipe.clean() 
-
-
-    def test_invalid_negative_carbs(self):
-        """
-        Test that negative carbs raise an error.
-        """
-        recipe = Recipe(
-            name="Test Invalid Recipe",
-            ingredients="Test Ingredients",
-            instructions="Test Instructions",
-            calories=500,
-            protein=20.0,
-            carbs=-5.0,  # Negative value
-            fats=10.0
-        )
-        with self.assertRaises(ValidationError):
-            recipe.clean()
-
-
-    def test_invalid_negative_fats(self):
-    #     """
-    #     Test that negative fats raise an error.
-    #     """
-        recipe = Recipe(
-            name="Test Invalid Recipe",
-            ingredients="Test Ingredients",
-            instructions="Test Instructions",
-            calories=500,
-            protein=20.0,
-            carbs=30.0,
-            fats=-5.0  # Negative value
-        )
-        with self.assertRaises(ValidationError):
-            recipe.clean() 
-
-
-
-class CalorieCalculatorTests(TestCase):
-    
-    def setUp(self):
-        """
-        Set up test data for the CalorieCalculator model.
-        """
-        self.calculator_1 = CalorieCalculator.objects.create(
-            gender='male',
-            age=30,
-            weight=75.0,
-            height=175.0,
-            activity_level='moderate_activity',
-            goal='maintain'
-        )
-        self.calculator_2 = CalorieCalculator.objects.create(
-            gender='female',
-            age=25,
-            weight=65.0,
-            height=160.0,
-            activity_level='light_activity',
-            goal='gain'
-        )
-        self.calculator_3 = CalorieCalculator.objects.create(
-            gender='male',
-            age=45,
-            weight=85.0,
-            height=180.0,
-            activity_level='sedentary',
-            goal='lose'
-        )
-
-
-    def test_calories_for_male_moderate_activity(self):
-        """
-        Test if the caloric calculation works for a male with moderate activity level.
-        """
-        # Correct expected calculation
-        expected_calories = 1698.75 * 1.55  # 1698.75 is the BMR for the given inputs
+        # Ensure the new meal is added to the meal plan through the MealInMealPlan relationship
+        self.assertEqual(self.meal_plan.meals.count(), 2)  # The meal plan should now have 2 meals
+        self.assertTrue(meal_in_plan in self.meal_plan.meals.through.objects.all())  # Ensure the MealInMealPlan instance is in the through table
         
-        # Assert that the calculated calories are correct
-        self.assertEqual(self.calculator_1.calculate_calories(), expected_calories)
 
-
-    def test_calories_for_female_light_activity(self):
+    def test_remove_meal_from_meal_plan(self):
         """
-        Test if the caloric calculation works for a female with light activity level.
+        Test removing a meal from a MealPlan through the MealInMealPlan model.
         """
-        expected_calories = self.calculator_2.calculate_calories()
-        self.assertEqual(expected_calories, (65.0 * 10 + 6.25 * 160.0 - 5 * 25 - 161) * 1.375)  # Expected formula for female BMR * activity multiplier
-
-
-    def test_calories_for_male_sedentary(self):
-        """
-        Test if the caloric calculation works for a male with sedentary activity level.
-        """
-        expected_calories = self.calculator_3.calculate_calories()
-        self.assertEqual(expected_calories, (85.0 * 10 + 6.25 * 180.0 - 5 * 45 + 5) * 1.2)  # Expected formula for male BMR * activity multiplier
-
-
-    def test_calories_for_invalid_gender(self):
-        """
-        Test if an invalid gender raises an exception.
-        """
-        # Create a CalorieCalculator object with an invalid gender value
-        calorie_calculator = CalorieCalculator(
-            gender='invalid_gender',  # Invalid gender
-            age=30,
-            weight=75.0,
-            height=175.0,
-            activity_level='moderate_activity',
-            goal='maintain'
+        new_meal = Meal.objects.create(
+            name="Tofu Stir-Fry",
+            description="A delicious vegetarian stir-fry",
+            calories=300,
+            protein=20,
+            carbs=25,
+            fat=12
         )
-        
-        # Check that the ValidationError is raised when we try to validate the object
-        with self.assertRaises(ValidationError):
-            calorie_calculator.clean()
 
-
-    def test_calories_for_invalid_activity_level(self):
-        """
-        Test if an invalid activity level raises an exception.
-        """
-        # Create a CalorieCalculator object with an invalid activity level
-        calorie_calculator = CalorieCalculator(
-            gender='male',
-            age=30,
-            weight=75.0,
-            height=175.0,
-            activity_level='invalid_activity',  # Invalid activity level
-            goal='maintain'
+        # Add the new meal to the meal plan
+        meal_in_plan = MealInMealPlan.objects.create(
+            meal_plan=self.meal_plan,
+            meal=new_meal,
+            quantity=3
         )
-        
-        # Check that the ValidationError is raised when we try to validate the object
-        with self.assertRaises(ValidationError):
-            calorie_calculator.clean()
 
+        # Remove the meal from the meal plan
+        self.meal_plan.meals.remove(new_meal)
 
-    def test_calories_for_invalid_goal(self):
-        """
-        Test if an invalid goal raises an exception.
-        """
-        # Creating an invalid goal, "build", which is not in the list of valid goals
-        calorie_calculator = CalorieCalculator(
-            gender='male',
-            age=30,
-            weight=75.0,
-            height=175.0,
-            activity_level='moderate_activity',
-            goal='build'  # Invalid goal
-        )
-        
-        # Check that the ValidationError is raised when we try to save the object
-        with self.assertRaises(ValidationError):
-            calorie_calculator.clean()
-
-
-    def test_calories_for_negative_values(self):
-        """
-        Test if negative values for weight, height, or age raise validation errors.
-        """
-        # Test negative age
-        calorie_calculator = CalorieCalculator(
-            gender='male',
-            age=-30,
-            weight=75.0,
-            height=175.0,
-            activity_level='moderate_activity',
-            goal='maintain'
-        )
-        with self.assertRaises(ValidationError):
-            calorie_calculator.clean()  # This should raise a ValidationError
-
-        # Test negative weight
-        calorie_calculator = CalorieCalculator(
-            gender='male',
-            age=30,
-            weight=-75.0,
-            height=175.0,
-            activity_level='moderate_activity',
-            goal='maintain'
-        )
-        with self.assertRaises(ValidationError):
-            calorie_calculator.clean()  # This should raise a ValidationError
-
-        # Test negative height
-        calorie_calculator = CalorieCalculator(
-            gender='male',
-            age=30,
-            weight=75.0,
-            height=-175.0,
-            activity_level='moderate_activity',
-            goal='maintain'
-        )
-        with self.assertRaises(ValidationError):
-            calorie_calculator.clean()  # This should raise a ValidationError
-
-
-    def test_calorie_calculation_for_maintenance_goal(self):
-        """
-        Test if the correct number of calories are returned for a maintenance goal.
-        """
-        # Expected calculation for maintenance goal using Harris-Benedict formula:
-        bmr = 10 * 75.0 + 6.25 * 175.0 - 5 * 30 + 5  # BMR for male = 10 * weight + 6.25 * height - 5 * age + 5
-        maintenance_calories = bmr * 1.55  # BMR * activity factor for moderate activity
-
-        # Check that the calculated calories match the expected value
-        self.assertEqual(self.calculator_1.calculate_calories(), maintenance_calories)
-
-
-    def test_calorie_calculation_for_gain_goal(self):
-        """
-        Test if the correct number of calories are returned for a gain goal.
-        """
-        # Expected BMR calculation for a female with the given weight, height, and age using the Harris-Benedict formula
-        bmr = 10 * 65.0 + 6.25 * 160.0 - 5 * 25 - 161  # BMR for female = 10 * weight + 6.25 * height - 5 * age - 161
-        gain_calories = bmr * 1.375  # BMR * activity factor for light activity (gain weight goal)
-
-        # Check that the calculated calories match the expected value for the "gain" goal
-        self.assertEqual(self.calculator_2.calculate_calories(), gain_calories)
-
-
-    def test_calorie_calculation_for_lose_goal(self):
-        """
-        Test if the correct number of calories are returned for a lose goal.
-        """
-        # Expected BMR calculation for a male with the given weight, height, and age using the Harris-Benedict formula
-        bmr = 10 * 85.0 + 6.25 * 180.0 - 5 * 45 + 5  # BMR for male = 10 * weight + 6.25 * height - 5 * age + 5
-        lose_calories = bmr * 1.2  # BMR * activity factor for sedentary (lose weight goal)
-
-        # Check that the calculated calories match the expected value for the "lose" goal
-        self.assertEqual(self.calculator_3.calculate_calories(), lose_calories)
-
-
-    def test_calorie_calculation_for_different_ages(self):
-        """
-        Test if calorie calculation adjusts for different ages.
-        """
-        calculator_4 = CalorieCalculator.objects.create(
-            gender='female',
-            age=50,
-            weight=60.0,
-            height=160.0,
-            activity_level='light_activity',
-            goal='maintain'
-        )
-        expected_calories = (60.0 * 10 + 6.25 * 160.0 - 5 * 50 - 161) * 1.375
-        self.assertEqual(calculator_4.calculate_calories(), expected_calories)
-
-
-    def test_calorie_calculation_for_different_heights(self):
-        """
-        Test if calorie calculation adjusts for different heights.
-        """
-        calculator_5 = CalorieCalculator.objects.create(
-            gender='male',
-            age=25,
-            weight=70.0,
-            height=190.0,  # Taller height
-            activity_level='moderate_activity',
-            goal='gain'
-        )
-        expected_calories = (70.0 * 10 + 6.25 * 190.0 - 5 * 25 + 5) * 1.55
-        self.assertEqual(calculator_5.calculate_calories(), expected_calories)
+        self.assertEqual(self.meal_plan.meals.count(), 1)  # The meal plan should have only the original meal now
+        self.assertFalse(meal_in_plan in self.meal_plan.meals.all())  # Ensure the new meal is removed from the plan
