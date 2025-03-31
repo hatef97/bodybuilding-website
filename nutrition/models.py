@@ -112,23 +112,23 @@ class Recipe(models.Model):
 
 
 class MealPlan(models.Model):
-    user = models.ForeignKey('core.CustomUser', on_delete=models.CASCADE, related_name='meal_plans')
+    user = models.ForeignKey('core.CustomUser', on_delete=models.CASCADE, related_name='meal_plans_user')
     name = models.CharField(max_length=255)
     description = models.TextField(default="No description provided.")
-    meals = models.ManyToManyField(Meal, through='MealInMealPlan')
+    meals = models.ManyToManyField(Meal, related_name='meal_plans_meal')
 
     def __str__(self):
         return self.name
 
 
 
-class MealInMealPlan(models.Model):
-    meal_plan = models.ForeignKey(MealPlan, on_delete=models.CASCADE)
-    meal = models.ForeignKey(Meal, on_delete=models.CASCADE)
-    quantity = models.PositiveIntegerField(default=1)
+# class MealInMealPlan(models.Model):
+#     meal_plan = models.ForeignKey(MealPlan, on_delete=models.CASCADE)
+#     meal = models.ForeignKey(Meal, on_delete=models.CASCADE)
+#     quantity = models.PositiveIntegerField(default=1)
 
-    class Meta:
-        unique_together = ('meal_plan', 'meal')
+#     class Meta:
+#         unique_together = ('meal_plan', 'meal')
 
-    def __str__(self):
-        return f"{self.meal.name} in {self.meal_plan.name}"
+#     def __str__(self):
+#         return f"{self.meal.name} in {self.meal_plan.name}"

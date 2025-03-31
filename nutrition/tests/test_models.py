@@ -461,10 +461,10 @@ class MealPlanTestCase(TestCase):
             email='user@mail.com',
             username='admin1',
             password='userpassword'
-            )
+        )
         
-        # Create a Meal instance to associate with the MealPlan
-        self.meal = Meal.objects.create(
+        # Create Meal instances to associate with the MealPlan
+        self.meal_1 = Meal.objects.create(
             name="Chicken Salad",
             description="A healthy chicken salad",
             calories=250,
@@ -472,17 +472,25 @@ class MealPlanTestCase(TestCase):
             carbs=15,
             fat=10
         )
+        
+        self.meal_2 = Meal.objects.create(
+            name="Vegetable Stir-fry",
+            description="A healthy vegetable stir-fry",
+            calories=200,
+            protein=10,
+            carbs=40,
+            fat=5
+        )
 
-        # Create a MealPlan instance associated with the CustomUser and Meal
+        # Create a MealPlan instance associated with the CustomUser and Meals
         self.meal_plan = MealPlan.objects.create(
             user=self.user,
             name="Weekly Plan",
             description="A plan with healthy meals"
         )
 
-        # Add the meal to the MealPlan using the through table
-        MealInMealPlan.objects.create(meal_plan=self.meal_plan, meal=self.meal, quantity=2)
-
+        # Add meals to the MealPlan using the many-to-many relationship
+        self.meal_plan.meals.set([self.meal_1, self.meal_2])
 
     def test_meal_plan_creation(self):
         """
@@ -491,8 +499,7 @@ class MealPlanTestCase(TestCase):
         self.assertEqual(self.meal_plan.name, "Weekly Plan")
         self.assertEqual(self.meal_plan.user.username, "admin1")
         self.assertEqual(self.meal_plan.description, "A plan with healthy meals")
-        self.assertEqual(self.meal_plan.meals.count(), 1)  # One meal should be associated with the plan
-
+        self.assertEqual(self.meal_plan.meals.count(), 2)  # Two meals should be associated with the plan
 
     def test_meal_plan_string_representation(self):
         """
@@ -500,15 +507,13 @@ class MealPlanTestCase(TestCase):
         """
         self.assertEqual(str(self.meal_plan), "Weekly Plan")
 
-
     def test_meal_plan_user_relationship(self):
         """
         Test the relationship between MealPlan and CustomUser.
         """
         meal_plan_user = self.meal_plan.user
         self.assertEqual(meal_plan_user.username, "admin1")  # The user should be correctly linked
-        self.assertTrue(self.user.meal_plans.filter(id=self.meal_plan.id).exists())  # Ensure reverse relationship works
-
+        self.assertTrue(self.user.meal_plans_user.filter(id=self.meal_plan.id).exists())  # Ensure reverse relationship works
 
     def test_missing_user(self):
         """
@@ -522,7 +527,6 @@ class MealPlanTestCase(TestCase):
             )
             meal_plan_without_user.full_clean()  # This should raise a validation error because 'user' is required.
 
-
     def test_meal_plan_name_length(self):
         """
         Test that the name length of the MealPlan does not exceed the maximum allowed length.
@@ -535,7 +539,6 @@ class MealPlanTestCase(TestCase):
         )
         with self.assertRaises(ValidationError):
             meal_plan_with_long_name.full_clean()  # This should raise a validation error due to name length
-
 
     def test_add_meal_to_meal_plan(self):
         """
@@ -554,17 +557,15 @@ class MealPlanTestCase(TestCase):
         self.meal_plan.meals.add(new_meal)
 
         # Check if the meal is correctly associated with the plan
-        self.assertEqual(self.meal_plan.meals.count(), 2)  # The meal plan should have 2 meals now
-
+        self.assertEqual(self.meal_plan.meals.count(), 3)  # The meal plan should have 3 meals now
 
     def test_reverse_meal_plan_lookup(self):
         """
         Test reverse lookup from a user to their associated MealPlans.
         """
-        meal_plans_for_user = self.user.meal_plans.all()
+        meal_plans_for_user = self.user.meal_plans_user.all()
         self.assertEqual(meal_plans_for_user.count(), 1)  # There should be only 1 MealPlan for the user
         self.assertTrue(self.meal_plan in meal_plans_for_user)  # The created MealPlan should be in the user's MealPlans
-
 
     def test_remove_meal_from_meal_plan(self):
         """
@@ -586,8 +587,7 @@ class MealPlanTestCase(TestCase):
         self.meal_plan.meals.remove(new_meal)
 
         # Ensure the meal has been removed from the meal plan
-        self.assertEqual(self.meal_plan.meals.count(), 1)  # Only the initial meal should remain in the plan
-
+        self.assertEqual(self.meal_plan.meals.count(), 2)  # Only two meals should remain in the plan
 
     def test_meal_plan_description_default(self):
         """
@@ -599,7 +599,6 @@ class MealPlanTestCase(TestCase):
         )
         self.assertEqual(meal_plan_without_description.description, "No description provided.")  # Default should be set
 
-
     def test_meal_plan_save(self):
         """
         Test saving a valid MealPlan instance to the database.
@@ -608,180 +607,4 @@ class MealPlanTestCase(TestCase):
         self.assertEqual(saved_meal_plan.name, "Weekly Plan")
         self.assertEqual(saved_meal_plan.description, "A plan with healthy meals")
         self.assertEqual(saved_meal_plan.user.username, "admin1")
-        self.assertEqual(saved_meal_plan.meals.count(), 1)  # Ensure the meal is saved with the plan
-
-
-
-class MealInMealPlanTestCase(TestCase):
-
-    def setUp(self):
-        """
-        Create valid instances of Meal, MealPlan, and CustomUser for testing.
-        """
-        # Create a CustomUser instance
-        self.user = User.objects.create_user(
-            email='user@mail.com',
-            username='user',
-            password='userpassword'
-            )
-        
-        # Create a Meal instance to associate with the MealInMealPlan
-        self.meal = Meal.objects.create(
-            name="Chicken Salad",
-            description="A healthy chicken salad",
-            calories=250,
-            protein=30,
-            carbs=15,
-            fat=10
-        )
-        
-        # Create a MealPlan instance associated with the CustomUser and Meal
-        self.meal_plan = MealPlan.objects.create(
-            user=self.user,
-            name="Weekly Plan",
-            description="A plan with healthy meals"
-        )
-        
-        # Create a MealInMealPlan instance
-        self.meal_in_plan = MealInMealPlan.objects.create(
-            meal_plan=self.meal_plan,
-            meal=self.meal,
-            quantity=2
-        )
-
-
-    def test_meal_in_meal_plan_creation(self):
-        """
-        Test the creation of a MealInMealPlan instance and verify all fields.
-        """
-        self.assertEqual(self.meal_in_plan.meal_plan.name, "Weekly Plan")
-        self.assertEqual(self.meal_in_plan.meal.name, "Chicken Salad")
-        self.assertEqual(self.meal_in_plan.quantity, 2)
-
-
-    def test_meal_in_meal_plan_string_representation(self):
-        """
-        Test the string representation of the MealInMealPlan model.
-        """
-        self.assertEqual(str(self.meal_in_plan), "Chicken Salad in Weekly Plan")
-
-
-    def test_unique_together_constraint(self):
-        """
-        Test that the combination of meal and meal_plan is unique.
-        """
-        with self.assertRaises(ValidationError):
-            # Create a duplicate MealInMealPlan for the same meal and meal_plan
-            duplicate_meal_in_plan = MealInMealPlan(
-                meal_plan=self.meal_plan,
-                meal=self.meal,
-                quantity=3
-            )
-            duplicate_meal_in_plan.full_clean()  # This should raise a validation error
-
-
-    def test_meal_in_meal_plan_relationship_with_meal_plan(self):
-        """
-        Test the relationship between MealInMealPlan and MealPlan.
-        """
-        meal_in_plan = MealInMealPlan.objects.get(id=self.meal_in_plan.id)
-        self.assertEqual(meal_in_plan.meal_plan.name, "Weekly Plan")
-        self.assertTrue(self.meal_plan.meals.filter(id=self.meal.id).exists())  # Ensure reverse relationship works
-
-
-    def test_meal_in_meal_plan_relationship_with_meal(self):
-        """
-        Test the relationship between MealInMealPlan and Meal.
-        """
-        # Retrieve the MealInMealPlan instance linked to the meal
-        meal_in_plan = MealInMealPlan.objects.get(id=self.meal_in_plan.id)
-        
-        # Check if the meal is associated with the MealInMealPlan instance
-        self.assertEqual(meal_in_plan.meal.name, "Chicken Salad")
-        
-        # Ensure that we can access the MealInMealPlan instance from the Meal
-        self.assertTrue(meal_in_plan.meal.mealinmealplan_set.filter(id=self.meal_in_plan.id).exists())  # Reverse relationship
-
-
-    def test_invalid_quantity(self):
-        """
-        Test that invalid (negative or zero) values for quantity raise a validation error.
-        """
-        with self.assertRaises(ValidationError):
-            invalid_quantity = MealInMealPlan(
-                meal_plan=self.meal_plan,
-                meal=self.meal,
-                quantity=-2
-            )
-            invalid_quantity.full_clean()  # This should raise a validation error for negative quantity
-
-        with self.assertRaises(ValidationError):
-            invalid_quantity_zero = MealInMealPlan(
-                meal_plan=self.meal_plan,
-                meal=self.meal,
-                quantity=0
-            )
-            invalid_quantity_zero.full_clean()  # This should raise a validation error for zero quantity
-
-
-    def test_save_meal_in_meal_plan(self):
-        """
-        Test saving a valid MealInMealPlan instance to the database and ensuring it can be retrieved.
-        """
-        saved_meal_in_plan = MealInMealPlan.objects.get(id=self.meal_in_plan.id)
-        self.assertEqual(saved_meal_in_plan.meal.name, "Chicken Salad")
-        self.assertEqual(saved_meal_in_plan.meal_plan.name, "Weekly Plan")
-        self.assertEqual(saved_meal_in_plan.quantity, 2)
-
-
-    def test_add_meal_to_meal_plan(self):
-        """
-        Test adding a meal to a MealPlan through the MealInMealPlan model.
-        """
-        # Create a new meal
-        new_meal = Meal.objects.create(
-            name="Tofu Stir-Fry",
-            description="A delicious vegetarian stir-fry",
-            calories=300,
-            protein=20,
-            carbs=25,
-            fat=12
-        )
-
-        # Create a new MealInMealPlan to link the meal to the meal plan
-        meal_in_plan = MealInMealPlan.objects.create(
-            meal_plan=self.meal_plan,
-            meal=new_meal,
-            quantity=3
-        )
-
-        # Ensure the new meal is added to the meal plan through the MealInMealPlan relationship
-        self.assertEqual(self.meal_plan.meals.count(), 2)  # The meal plan should now have 2 meals
-        self.assertTrue(meal_in_plan in self.meal_plan.meals.through.objects.all())  # Ensure the MealInMealPlan instance is in the through table
-        
-
-    def test_remove_meal_from_meal_plan(self):
-        """
-        Test removing a meal from a MealPlan through the MealInMealPlan model.
-        """
-        new_meal = Meal.objects.create(
-            name="Tofu Stir-Fry",
-            description="A delicious vegetarian stir-fry",
-            calories=300,
-            protein=20,
-            carbs=25,
-            fat=12
-        )
-
-        # Add the new meal to the meal plan
-        meal_in_plan = MealInMealPlan.objects.create(
-            meal_plan=self.meal_plan,
-            meal=new_meal,
-            quantity=3
-        )
-
-        # Remove the meal from the meal plan
-        self.meal_plan.meals.remove(new_meal)
-
-        self.assertEqual(self.meal_plan.meals.count(), 1)  # The meal plan should have only the original meal now
-        self.assertFalse(meal_in_plan in self.meal_plan.meals.all())  # Ensure the new meal is removed from the plan
+        self.assertEqual(saved_meal_plan.meals.count(), 2)  # Ensure the meals are saved with the plan
