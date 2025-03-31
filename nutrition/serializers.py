@@ -20,16 +20,17 @@ class CalorieCalculatorSerializer(serializers.ModelSerializer):
         data['gender'] = data.get('gender', 'male')  # Default to 'male' if not provided
         data['activity_level'] = data.get('activity_level', 'sedentary')  # Default to 'sedentary' if not provided
         
-        if data['age'] <= 0:
+        if not data.get('age') or data['age'] <= 0:
             raise serializers.ValidationError("Age must be a positive number.")
-        if data['weight'] <= 0:
+        if not data.get('weight') or data['weight'] <= 0:
             raise serializers.ValidationError("Weight must be a positive number.")
-        if data['height'] <= 0:
+        if not data.get('height') or data['height'] <= 0:
             raise serializers.ValidationError("Height must be a positive number.")
-        if data['gender'] not in ['male', 'female']:
-            raise serializers.ValidationError("Gender must be 'male' or 'female'.")
-        if data['activity_level'] not in ['sedentary', 'light_activity', 'moderate_activity', 'heavy_activity']:
-            raise serializers.ValidationError("Activity level must be one of: sedentary, light_activity, moderate_activity, heavy_activity.")
+        if not data.get('activity_level'):
+            raise serializers.ValidationError("Activity level must be provided.")
+        if not data.get('gender'):
+            raise serializers.ValidationError("Gender must be provided.")
+        
         return data
 
     def create(self, validated_data):

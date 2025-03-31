@@ -189,47 +189,69 @@ class RecipeViewSet(viewsets.ModelViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# class CalorieCalculatorViewSet(viewsets.ModelViewSet):
-#     """
-#     ViewSet for calculating daily calorie requirements based on user input.
-#     """
-#     queryset = CalorieCalculator.objects.all()
-#     serializer_class = CalorieCalculatorSerializer
-#     pagination_class = StandardResultsSetPagination  # Use pagination for large result sets
+class CalorieCalculatorViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for handling CalorieCalculator related operations.
+    """
+    serializer_class = CalorieCalculatorSerializer
+    queryset = CalorieCalculator.objects.all()
+    permission_classes = [IsAuthenticated]  # Only authenticated users can access
+    pagination_class = StandardResultsSetPagination  # Use pagination for large result sets
 
-#     def get_permissions(self):
-#         """
-#         Allow authenticated users to perform CRUD operations on meal plans.
-#         """
-#         if self.action in ['create', 'update', 'destroy']:
-#             return [IsAdminUser()]  # Only admins can create, update, or destroy meal plans
-#         return [IsAuthenticated()]  # Any authenticated user can list or view meal plans
+    @action(detail=False, methods=['post'], url_path='calculate_calories')
+    def calculate_calories(self, request):
+        """
+        Custom action to calculate the calories based on the provided data.
+        The calculation will use a formula based on the provided data like age, weight, height, activity level, and gender.
+        It will also save the provided data to the database.
+        """
+        serializer = CalorieCalculatorSerializer(data=request.data)
 
+        if serializer.is_valid():
+            # Perform the calorie calculation based on user data
+            data = serializer.validated_data
+            age = data['age']
+            weight = data['weight']
+            height = data['height']
+            activity_level = data['activity_level']
+            gender = data['gender']
 
-#     @action(detail=False, methods=['get'])
-#     def calculate(self, request):
-#         """
-#         Custom action to calculate daily calories based on user input.
-#         """
-#         age = request.query_params.get('age')
-#         weight = request.query_params.get('weight')
-#         height = request.query_params.get('height')
-#         activity_level = request.query_params.get('activity_level')
-#         goal = request.query_params.get('goal')
-#         gender = request.query_params.get('gender')
+            # Example Harris-Benedict Equation (BMR calculation)
+            if gender == 'male':
+                bmr = 88.362 + (13.397 * weight) + (4.799 * height) - (5.677 * age)
+            else:
+                bmr = 447.593 + (9.247 * weight) + (3.098 * height) - (4.330 * age)
 
-#         if not all([age, weight, height, activity_level, goal, gender]):
-#             return Response({"detail": "All parameters must be provided."}, status=status.HTTP_400_BAD_REQUEST)
+            # Activity Level multiplier
+            activity_multipliers = {
+                'sedentary': 1.2,
+                'light_activity': 1.375,
+                'moderate_activity': 1.55,
+                'heavy_activity': 1.725
+            }
 
-#         calorie_calculator = CalorieCalculator(
-#             age=int(age),
-#             weight=float(weight),
-#             height=float(height),
-#             activity_level=activity_level,
-#             goal=goal,
-#             gender=gender
-#         )
+            calorie_need = bmr * activity_multipliers.get(activity_level, 1.2)
 
-#         calories = calorie_calculator.calculate_calories()
+            # Save the calorie calculation result to the database
+            calorie_calculator_instance = CalorieCalculator.objects.create(
+                gender=gender,
+                age=age,
+                weight=weight,
+                height=height,
+                activity_level=activity_level
+            )
 
-#         return Response({"daily_calories": calories}, status=status.HTTP_200_OK)
+            return Response({
+                "calories_needed": calorie_need,
+                "calorie_calculator_id": calorie_calculator_instance.id,
+                "message": "Calorie calculation saved successfully"
+            }, status=status.HTTP_200_OK)
+
+        # If data is invalid, return a bad request with the errors
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def create(self, request, *args, **kwargs):
+        """
+        Create a new CalorieCalculator instance (only for authenticated users).
+        """
+        return super().create(request, *args, **kwargs)

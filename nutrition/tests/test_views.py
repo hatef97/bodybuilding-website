@@ -595,3 +595,165 @@ class RecipeViewSetTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreater(len(response.data['results']), 0)
         self.assertEqual(response.data['results'][0]['instructions'], self.recipe_1.instructions)
+
+
+
+class CalorieCalculatorViewSetTests(APITestCase):
+
+    def setUp(self):
+        """Set up users and calorie calculators."""
+        # Create a regular user for authentication
+        self.regular_user = User.objects.create_user(
+            email='user@mail.com',
+            username='regularuser',
+            password='userpassword'
+        )
+        self.client.force_authenticate(user=self.regular_user)
+
+        # Clear any existing calorie calculators (in case they exist from previous tests)
+        CalorieCalculator.objects.all().delete()
+
+        # Calorie calculator data for the regular user
+        self.calorie_calculator_data = {
+            'gender': 'male',
+            'age': 30,
+            'weight': 70,
+            'height': 175,
+            'activity_level': 'moderate_activity'
+        }
+
+        # Create a CalorieCalculator instance for the regular user
+        self.calorie_calculator = CalorieCalculator.objects.create(**self.calorie_calculator_data)
+
+        # URL for the calorie calculator list view
+        self.url = reverse('caloriecalculator-list')
+
+
+    def test_calorie_calculator_list_authenticated_user(self):
+        """Test that an authenticated user can list calorie calculators."""
+        # Create two calorie calculators (for this test)
+        CalorieCalculator.objects.create(gender='female', age=25, weight=55, height=160, activity_level='light_activity')
+        
+        # Send GET request to list all calorie calculators
+        response = self.client.get(self.url)
+
+        # Assert that only the calorie calculators created in this test are returned
+        # Check the length of the 'results' array inside the response data, which contains the actual data
+        self.assertEqual(len(response.data['results']), 2)  # Expecting exactly 2 calorie calculators (1 from setUp + 1 from this test)
+
+
+    def test_create_calorie_calculator_authenticated_user(self):
+        """Test that a regular user can create a new CalorieCalculator."""
+        data = {
+            'gender': 'female',
+            'age': 25,
+            'weight': 55,
+            'height': 160,
+            'activity_level': 'light_activity'
+        }
+
+        response = self.client.post(self.url, data, format='json')
+
+        # Ensure the new calorie calculator is created successfully
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['gender'], 'female')  # Assert the new calculator's gender
+
+
+    def test_create_calorie_calculator_unauthenticated_user(self):
+        """Test that an unauthenticated user cannot create a new CalorieCalculator."""
+        self.client.logout()  # Force logout the current user (ensure unauthenticated)
+
+        data = {
+            'gender': 'male',
+            'age': 35,
+            'weight': 80,
+            'height': 180,
+            'activity_level': 'moderate_activity'
+        }
+
+        # Send POST request to create a new CalorieCalculator
+        response = self.client.post(self.url, data, format='json')
+
+        # Assert that the response status code is 401 Unauthorized for unauthenticated users
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+    def test_calculate_calories_valid_data(self):
+        """Test that a user can calculate calories successfully with valid data."""
+        data = {
+            'age': 30,
+            'weight': 75,
+            'height': 180,
+            'activity_level': 'moderate_activity',
+            'gender': 'male'
+        }
+
+        # Use the correct URL name for the 'calculate_calories' action
+        calculate_url = reverse('caloriecalculator-calculate_calories')
+        response = self.client.post(calculate_url, data, format='json')
+
+        # Check if the response is successful
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Check if the calories_needed key exists in the response
+        self.assertIn('calories_needed', response.data)
+
+        # Check if a calorie calculator instance was created in the database
+        self.assertTrue(CalorieCalculator.objects.filter(id=response.data['calorie_calculator_id']).exists())
+        
+
+    def test_calculate_calories_invalid_data(self):
+        """Test that invalid data for calorie calculation returns a bad request."""
+        data = {
+            'age': 30,
+            'weight': 0,  # Invalid weight
+            'height': 180,
+            'activity_level': 'moderate_activity',
+            'gender': 'male'
+        }
+
+        calculate_url = reverse('caloriecalculator-calculate_calories')
+        response = self.client.post(calculate_url, data, format='json')
+
+        # Check for a bad request response
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+    def test_calculate_calories_missing_field(self):
+        """Test that missing fields return a validation error."""
+        # Missing the 'activity_level' field
+        data = {
+            'age': 30,
+            'weight': 75,
+            'gender': 'male',
+            'activity_level': 'sedentary'
+        }
+
+        calculate_url = reverse('caloriecalculator-calculate_calories')
+        response = self.client.post(calculate_url, data, format='json')
+
+        # Assert that the response status code is 400 (Bad Request)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Ensure the validation error for 'activity_level' is present in the response
+        self.assertIn('height', response.data)
+        self.assertEqual(response.data['height'][0], 'This field is required.')  # Check the error message  # Check the error message
+
+
+    def test_calculate_calories_invalid_activity_level(self):
+        """Test that an invalid activity level returns a bad request."""
+        data = {
+            'age': 30,
+            'weight': 75,
+            'height': 180,
+            'activity_level': 'extreme_activity',  # Invalid activity level
+            'gender': 'male'
+        }
+
+        calculate_url = reverse('caloriecalculator-calculate_calories')
+        response = self.client.post(calculate_url, data, format='json')
+
+        # Check for a bad request response due to invalid activity level
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('activity_level', response.data)  # Check that activity_level is invalid
+        
