@@ -1,162 +1,162 @@
-# from rest_framework import viewsets, status
-# from rest_framework.response import Response
-# from rest_framework.permissions import IsAuthenticated, IsAdminUser
-# from rest_framework.decorators import action
-# from rest_framework.pagination import PageNumberPagination
-# from rest_framework.exceptions import ValidationError
+from rest_framework import viewsets, status
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.exceptions import ValidationError
 
-# from django.db.models import Q, Prefetch, Sum
+from django.db.models import Q, Prefetch, Sum
 
-# from .models import Meal, MealPlan, Recipe, CalorieCalculator, MealInMealPlan
-# from .serializers import MealSerializer, MealPlanSerializer, RecipeSerializer, CalorieCalculatorSerializer, MealInMealPlanSerializer
-
-
-
-# # Custom Pagination Class for Search Results
-# class StandardResultsSetPagination(PageNumberPagination):
-#     page_size = 10  # Set the default page size for pagination
-#     page_size_query_param = 'page_size'
-#     max_page_size = 100  # Limit the maximum page size
+from .models import *
+from .serializers import *
 
 
 
-# class MealViewSet(viewsets.ModelViewSet):
-#     """
-#     ViewSet for managing meals.
-#     """
-#     serializer_class = MealSerializer
-#     pagination_class = StandardResultsSetPagination  # Use pagination for large result sets
-
-#     def get_permissions(self):
-#         """
-#         Allow authenticated users to perform CRUD operations on meals.
-#         """
-#         if self.action in ['create', 'update', 'destroy']:
-#             return [IsAdminUser()]  # Only admins can create, update, or destroy meals
-#         return [IsAuthenticated()]  # Any authenticated user can list or view meals
-
-#     def get_queryset(self):
-#         """
-#         Customize the queryset for search, category filters, etc.
-#         """
-#         queryset = Meal.objects.all()
-
-#         # Apply search filter (by name or description)
-#         search_query = self.request.query_params.get('search', None)
-#         if search_query:
-#             queryset = queryset.filter(
-#                 Q(name__icontains=search_query) |
-#                 Q(description__icontains=search_query)
-#             )
-
-#         # Apply ordering and validate ordering fields
-#         ordering = self.request.query_params.get('ordering', None)
-#         if ordering:
-#             valid_ordering_fields = ['name', 'calories']  # Example: list of valid fields
-#             ordering_fields = ordering.split(',')
-
-#             # Validate ordering fields
-#             for field in ordering_fields:
-#                 if field.lstrip('-') not in valid_ordering_fields:
-#                     raise ValidationError(f"Invalid ordering field: {field}")
-
-#             queryset = queryset.order_by(*ordering_fields)
-
-#         return queryset
+# Custom Pagination Class for Search Results
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 10  # Set the default page size for pagination
+    page_size_query_param = 'page_size'
+    max_page_size = 100  # Limit the maximum page size
 
 
 
-# class MealPlanViewSet(viewsets.ModelViewSet):
-#     """
-#     ViewSet for managing meal plans with optimized queries and flexible permissions.
-#     """
-#     serializer_class = MealPlanSerializer
-#     pagination_class = StandardResultsSetPagination  # Use pagination for large result sets
+class MealViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing meals.
+    """
+    serializer_class = MealSerializer
+    pagination_class = StandardResultsSetPagination  # Use pagination for large result sets
 
-#     def get_permissions(self):
-#         """
-#         Allow authenticated users to perform CRUD operations on meal plans.
-#         """
-#         if self.action in ['create', 'update', 'destroy']:
-#             return [IsAdminUser()]  # Only admins can create, update, or destroy meal plans
-#         return [IsAuthenticated()]  # Any authenticated user can list or view meal plans
+    def get_permissions(self):
+        """
+        Allow authenticated users to perform CRUD operations on meals.
+        """
+        if self.action in ['create', 'update', 'destroy']:
+            return [IsAdminUser()]  # Only admins can create, update, or destroy meals
+        return [IsAuthenticated()]  # Any authenticated user can list or view meals
 
-#     def get_queryset(self):
-#         """
-#         Override to optimize and filter the queryset with additional filters and optimizations.
-#         """
-#         queryset = MealPlan.objects.all()
+    def get_queryset(self):
+        """
+        Customize the queryset for search, category filters, etc.
+        """
+        queryset = Meal.objects.all()
 
-#         # Prefetch related meals to optimize queries when retrieving meal plans
-#         queryset = queryset.prefetch_related(
-#             Prefetch('meals', queryset=Meal.objects.all())  # Prefetch the meals related to meal plans
-#         )
+        # Apply search filter (by name or description)
+        search_query = self.request.query_params.get('search', None)
+        if search_query:
+            queryset = queryset.filter(
+                Q(name__icontains=search_query) |
+                Q(description__icontains=search_query)
+            )
 
-#         # Apply custom filters (e.g., by goal, name, etc.)
-#         goal = self.request.query_params.get('goal', None)
-#         if goal:
-#             queryset = queryset.filter(goal=goal)
+        # Apply ordering and validate ordering fields
+        ordering = self.request.query_params.get('ordering', None)
+        if ordering:
+            valid_ordering_fields = ['name', 'calories']  # Example: list of valid fields
+            ordering_fields = ordering.split(',')
 
-#         # Annotate the queryset with total calories, protein, carbs, fats
-#         queryset = queryset.annotate(
-#             total_calories=Sum('meals__calories'),
-#             total_protein=Sum('meals__protein'),
-#             total_carbs=Sum('meals__carbs'),
-#             total_fats=Sum('meals__fats')
-#         )
+            # Validate ordering fields
+            for field in ordering_fields:
+                if field.lstrip('-') not in valid_ordering_fields:
+                    raise ValidationError(f"Invalid ordering field: {field}")
 
-#         return queryset
+            queryset = queryset.order_by(*ordering_fields)
 
-#     def update(self, request, *args, **kwargs):
-#         """
-#         Update the MealPlan instance with validated data.
-#         """
-#         instance = self.get_object()
-#         serializer = self.get_serializer(instance, data=request.data, partial=True)
+        return queryset
 
-#         # Validate the data
-#         serializer.is_valid(raise_exception=True)
+    def handle_exception(self, exc):
+        """
+        Custom exception handling to ensure validation errors are returned with status 400.
+        """
+        if isinstance(exc, ValidationError):
+            return Response({"detail": str(exc)}, status=400)
+        return super().handle_exception(exc)
 
-#         # Handle meal updates (update meal relationships)
-#         meals_data = request.data.get('meals', [])
+
+
+class MealPlanViewSet(viewsets.ModelViewSet):
+    """
+    A viewset for viewing and editing MealPlan instances.
+    """
+    serializer_class = MealPlanSerializer
+    pagination_class = StandardResultsSetPagination  # For pagination in large result sets
+
+    def get_permissions(self):
+        """
+        Define the permissions for different actions.
+        """
+        if self.action in ['create', 'update', 'destroy']:
+            return [IsAdminUser()]  # Only admins can create, update, or delete meal plans
+        return [IsAuthenticated()]  # Any authenticated user can view or list meal plans
+
+    def get_queryset(self):
+        """
+        Customize the queryset to allow filtering and searching for meal plans.
+        """
+        queryset = MealPlan.objects.all()
+
+        # Search by meal plan name or description
+        search_query = self.request.query_params.get('search', None)
+        if search_query:
+            queryset = queryset.filter(
+                Q(name__icontains=search_query) | Q(description__icontains=search_query)
+            )
+
+        # Filtering by user
+        user_id = self.request.query_params.get('user', None)
+        if user_id:
+            queryset = queryset.filter(user__id=user_id)
+
+        # Order by field
+        ordering = self.request.query_params.get('ordering', None)
+        if ordering:
+            valid_ordering_fields = ['name', 'description', 'user']
+            ordering_fields = ordering.split(',')
+
+            for field in ordering_fields:
+                if field.lstrip('-') not in valid_ordering_fields:
+                    raise ValidationError(f"Invalid ordering field: {field}")
+
+            queryset = queryset.order_by(*ordering_fields)
+
+        return queryset
+
+    def handle_exception(self, exc):
+        """
+        Override to handle validation errors and return them with a 400 status.
+        """
+        if isinstance(exc, ValidationError):
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return super().handle_exception(exc)
         
-#         # We will extract meal IDs from meals data in case they are dictionaries
-#         meal_ids = []
-#         for meal in meals_data:
-#             # Check if the meal data is a dictionary or just an ID
-#             if isinstance(meal, dict) and 'id' in meal:
-#                 meal_ids.append(meal['id'])  # Add meal ID from the nested data
-#             else:
-#                 meal_ids.append(meal)  # It’s already an ID, add directly
-        
-#         # Set the updated meals to the MealPlan instance (using meal IDs)
-#         instance.meals.set(meal_ids)
+    def create(self, request, *args, **kwargs):
+        """
+        Handle creation of a MealPlan with related meals.
+        """
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()  # Save the meal plan with related meals
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-#         # Save the updated MealPlan instance
-#         instance.save()
+    def update(self, request, *args, **kwargs):
+        """
+        Handle updating an existing MealPlan instance and its related meals.
+        """
+        meal_plan = self.get_object()
+        serializer = self.get_serializer(meal_plan, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()  # Update the meal plan with new meal data
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-#         return Response(serializer.data)
-
-#     @action(detail=True, methods=['get'])
-#     def meal_summary(self, request, pk=None):
-#         """
-#         Custom action to get the summary of total nutrients for a given meal plan.
-#         """
-#         meal_plan = self.get_object()
-
-#         # Prepare summary data
-#         summary_data = {
-#             'total_calories': meal_plan.total_calories,
-#             'total_protein': meal_plan.total_protein,
-#             'total_carbs': meal_plan.total_carbs,
-#             'total_fats': meal_plan.total_fats,
-#         }
-
-#         # Serialize the summary data
-#         serializer = MealPlanSummarySerializer(data=summary_data)
-#         serializer.is_valid(raise_exception=True)
-
-#         return Response(serializer.data)
+    def destroy(self, request, *args, **kwargs):
+        """
+        Handle deleting a MealPlan instance.
+        """
+        meal_plan = self.get_object()
+        meal_plan.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 
@@ -222,56 +222,3 @@
 #         calories = calorie_calculator.calculate_calories()
 
 #         return Response({"daily_calories": calories}, status=status.HTTP_200_OK)
-
-
-
-# # Create a MealInMealPlanViewSet for handling the many-to-many relation between Meal and MealPlan.
-# # class MealInMealPlanViewSet(viewsets.ModelViewSet):
-# #     """
-# #     ViewSet for adding meals to a meal plan.
-# #     """
-# #     serializer_class = MealInMealPlanSerializer
-# #     pagination_class = StandardResultsSetPagination  # Use pagination for large result sets
-
-# #     def get_permissions(self):
-# #         """
-# #         Allow authenticated users to perform CRUD operations on meal plans.
-# #         """
-# #         if self.action in ['create', 'update', 'destroy']:
-# #             return [IsAdminUser()]  # Only admins can create, update, or destroy meal plans
-# #         return [IsAuthenticated()]  # Any authenticated user can list or view meal plans
-
-# #     def get_queryset(self):
-# #         """
-# #         Customize the queryset to filter by the meal plan and user.
-# #         """
-# #         queryset = MealInMealPlan.objects.all()
-
-# #         # Ensure you're passing the MealPlan instance or its ID
-# #         meal_plan_id = self.request.query_params.get('meal_plan', None)
-# #         if meal_plan_id:
-# #             try:
-# #                 # Ensure you're querying by ID, not email or other parameters
-# #                 meal_plan = MealPlan.objects.get(id=meal_plan_id)
-# #                 queryset = queryset.filter(meal_plan=meal_plan)
-# #             except MealPlan.DoesNotExist:
-# #                 # Handle error if MealPlan is not found
-# #                 raise ValidationError("MealPlan with the provided ID does not exist.")
-
-# #         # Prefetch related meals to optimize queries when retrieving meal plans
-# #         queryset = queryset.prefetch_related(
-# #             Prefetch('meal', queryset=Meal.objects.all())  # Prefetch meals
-# #         )
-
-# #         return queryset
-
-# #     @action(detail=True, methods=['get'])
-# #     def meal_plan(self, request, pk=None):
-# #         """
-# #         Custom action to retrieve all meals in a specific meal plan.
-# #         """
-# #         meal_in_meal_plan = self.get_object()
-# #         meal_plan = meal_in_meal_plan.meal_plan
-# #         meals = meal_plan.meals.all()
-# #         serializer = MealSerializer(meals, many=True)
-# #         return Response(serializer.data)
