@@ -281,23 +281,23 @@ class RecipeSerializerTestCase(APITestCase):
         """
         Create a valid Meal instance for testing.
         """
-        self.valid_meal_data = {
-            'name': 'Chicken Salad',
-            'description': 'A healthy chicken salad',
-            'calories': 250,
-            'protein': 30,
-            'carbs': 15,
-            'fat': 10
-        }
+        self.valid_meal = Meal.objects.create(
+            name='Chicken Salad',
+            description='A healthy chicken salad',
+            calories=250,
+            protein=30,
+            carbs=15,
+            fat=10
+        )
 
         self.valid_recipe_data = {
-            'meal': self.valid_meal_data,  # Nested meal data
+            'meal': self.valid_meal.id,  # Pass meal ID instead of full meal data
             'instructions': 'Mix ingredients together.',
             'ingredients': 'Chicken, lettuce, olive oil'
         }
 
         self.invalid_recipe_data = {
-            'meal': self.valid_meal_data,
+            'meal': self.valid_meal.id,  # Pass meal ID instead of full meal data
             'instructions': 'A' * 501,  # Instructions exceed 500 characters
             'ingredients': 'B' * 501  # Ingredients exceed 500 characters
         }
@@ -308,8 +308,9 @@ class RecipeSerializerTestCase(APITestCase):
         Test that the RecipeSerializer works with valid data.
         """
         serializer = RecipeSerializer(data=self.valid_recipe_data)
+    
         self.assertTrue(serializer.is_valid())  # Ensure serializer is valid
-        self.assertEqual(serializer.validated_data['meal']['name'], 'Chicken Salad')
+        self.assertEqual(serializer.validated_data['meal'], self.valid_meal)  # Check that the meal is the correct Meal instance
         self.assertEqual(serializer.validated_data['instructions'], 'Mix ingredients together.')
         self.assertEqual(serializer.validated_data['ingredients'], 'Chicken, lettuce, olive oil')
 
@@ -367,11 +368,10 @@ class RecipeSerializerTestCase(APITestCase):
         Test that the RecipeSerializer raises a validation error if meal data is invalid.
         """
         invalid_data = self.valid_recipe_data.copy()
-        invalid_data['meal'] = {'name': 'Invalid Meal'}  # Incomplete meal data
+        invalid_data['meal'] = 'invalid_id'  # Invalid meal ID (string instead of integer)
         serializer = RecipeSerializer(data=invalid_data)
         with self.assertRaises(serializers.ValidationError):
-            serializer.is_valid(raise_exception=True)  # Should raise validation error for incomplete meal data
-
+            serializer.is_valid(raise_exception=True)  # Should raise validation error for invalid meal ID
 
 
 class MealPlanSerializerTestCase(APITestCase):

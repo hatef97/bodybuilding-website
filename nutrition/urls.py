@@ -10,7 +10,7 @@ from .views import *
 router = DefaultRouter()
 router.register(r'meals', MealViewSet, basename='meal')
 router.register(r'mealplans', MealPlanViewSet, basename='mealplan')
-# router.register(r'recipes', RecipeViewSet, basename='recipe')
+router.register(r'recipes', RecipeViewSet, basename='recipe')
 # router.register(r'caloriecalculators', CalorieCalculatorViewSet, basename='caloriecalculator')
 
 urlpatterns = [

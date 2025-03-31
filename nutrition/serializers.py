@@ -61,7 +61,7 @@ class MealSerializer(serializers.ModelSerializer):
 
 # Serializer for Recipe model
 class RecipeSerializer(serializers.ModelSerializer):
-    meal = MealSerializer()  # Nested serializer for the Meal
+    meal = serializers.PrimaryKeyRelatedField(queryset=Meal.objects.all())
 
     class Meta:
         model = Recipe
@@ -73,13 +73,14 @@ class RecipeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Instructions cannot exceed 500 characters.")
         if len(data['ingredients']) > 500:
             raise serializers.ValidationError("Ingredients cannot exceed 500 characters.")
+        if 'meal' not in data or 'instructions' not in data or 'ingredients' not in data:
+            raise serializers.ValidationError("All fields are required.")
         return data
 
     def create(self, validated_data):
         """Handle the creation of Recipe with nested meal data."""
-        meal_data = validated_data.pop('meal')
-        meal = Meal.objects.create(**meal_data)
-        recipe = Recipe.objects.create(meal=meal, **validated_data)
+        meal = validated_data.pop('meal')  # Just the ID is passed from the request
+        recipe = Recipe.objects.create(meal=meal, **validated_data)  # Create the Recipe instance with validated data
         return recipe
 
 

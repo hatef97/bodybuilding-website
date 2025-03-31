@@ -400,3 +400,198 @@ class MealPlanViewSetTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data['results']), 10)  # Should return 10 meal plans
         self.assertIn('next', response.data)  # Should have a 'next' page
+
+
+
+class RecipeViewSetTests(APITestCase):
+
+    def setUp(self):
+        """
+        Set up the initial data for the tests.
+        """
+        # Create sample users: one admin and one regular user
+        self.admin_user = User.objects.create_superuser(
+            email='admin1@mail.com',
+            username='admin1',
+            password='admin1password',
+        )
+        self.regular_user = User.objects.create_user(
+            email='user@mail.com',
+            username='user',
+            password='userpassword',
+        )
+
+        # Create a meal instance for recipe association
+        self.meal_1 = Meal.objects.create(
+            name="Chicken Salad",
+            calories=400,
+            protein=35,
+            carbs=10,
+            fat=15,
+            description="A healthy chicken salad."
+        )
+
+        self.meal_2 = Meal.objects.create(
+            name="Grilled Salmon",
+            calories=500,
+            protein=40,
+            carbs=5,
+            fat=25,
+            description="Grilled salmon with vegetables."
+        )
+
+        # Create a recipe instance associated with the meal
+        self.recipe_1 = Recipe.objects.create(
+            meal=self.meal_1,
+            instructions="Cook chicken and mix with salad ingredients.",
+            ingredients="Chicken, Lettuce, Tomatoes, Olive Oil"
+        )
+        
+        self.recipe_2 = Recipe.objects.create(
+            meal=self.meal_2,
+            instructions="Grill salmon and serve with veggies.",
+            ingredients="Salmon, Broccoli, Olive Oil"
+        )
+
+        self.url = reverse('recipe-list')  # Assuming this is the URL for the Recipe viewset
+
+
+    def test_recipe_list_authenticated_user(self):
+        """
+        Test that authenticated users can list recipes.
+        """
+        self.client.force_authenticate(user=self.regular_user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 2)  # Should return 2 recipes
+
+
+    def test_recipe_list_unauthenticated_user(self):
+        """
+        Test that unauthenticated users cannot access the recipe list.
+        """
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+    def test_create_recipe_as_admin(self):
+        """
+        Test that an admin can create a recipe.
+        """
+        self.client.force_authenticate(user=self.admin_user)  # Ensure we authenticate as the admin user
+        data = {
+            'meal': self.meal_1.id,  # Ensure we are passing the meal ID, not the meal object
+            'instructions': 'Cook chicken and mix with veggies.',
+            'ingredients': 'Chicken, Lettuce, Carrot, Olive Oil'
+        }
+        response = self.client.post(self.url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['meal'], self.meal_1.id)
+        self.assertEqual(response.data['instructions'], 'Cook chicken and mix with veggies.')
+        
+
+    def test_create_recipe_as_regular_user(self):
+        """
+        Test that a regular user cannot create a recipe.
+        """
+        self.client.force_authenticate(user=self.regular_user)
+        data = {
+            'meal': self.meal_2.id,
+            'instructions': 'Grill salmon and serve with veggies.',
+            'ingredients': 'Salmon, Broccoli, Olive Oil'
+        }
+        response = self.client.post(self.url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+    def test_update_recipe_as_admin(self):
+        """
+        Test that an admin can update a recipe.
+        """
+        self.client.force_authenticate(user=self.admin_user)  # Ensure we authenticate as the admin user
+
+        # Prepare data to update the recipe
+        data = {
+            'meal': self.meal_1.id,  # Pass the meal ID correctly
+            'instructions': 'Updated instructions for Chicken Salad.',
+            'ingredients': 'Chicken, Lettuce, Tomatoes, Olive Oil, Cucumber'
+        }
+
+        # Perform the PUT request to update the recipe
+        response = self.client.put(reverse('recipe-detail', kwargs={'pk': self.recipe_1.id}), data, format='json')
+
+        # Assert that the update was successful and the recipe data was updated correctly
+        self.assertEqual(response.status_code, status.HTTP_200_OK)  # Ensure the status code is 200 OK
+        self.assertEqual(response.data['instructions'], 'Updated instructions for Chicken Salad.')
+        self.assertEqual(response.data['ingredients'], 'Chicken, Lettuce, Tomatoes, Olive Oil, Cucumber')
+        
+
+    def test_update_recipe_as_regular_user(self):
+        """
+        Test that a regular user cannot update a recipe.
+        """
+        self.client.force_authenticate(user=self.regular_user)
+        data = {
+            'instructions': 'Updated instructions for Chicken Salad.',
+            'ingredients': 'Chicken, Lettuce, Tomatoes, Olive Oil, Cucumber'
+        }
+        response = self.client.put(reverse('recipe-detail', kwargs={'pk': self.recipe_1.id}), data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+    def test_delete_recipe_as_admin(self):
+        """
+        Test that an admin can delete a recipe.
+        """
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.delete(reverse('recipe-detail', kwargs={'pk': self.recipe_1.id}))
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(Recipe.objects.count(), 1)  # Only one recipe should remain
+
+
+    def test_delete_recipe_as_regular_user(self):
+        """
+        Test that a regular user cannot delete a recipe.
+        """
+        self.client.force_authenticate(user=self.regular_user)
+        response = self.client.delete(reverse('recipe-detail', kwargs={'pk': self.recipe_1.id}))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+    def test_recipe_string_representation(self):
+        """
+        Test that the string representation of a recipe is correct.
+        """
+        self.assertEqual(str(self.recipe_1), f"Recipe for {self.meal_1.name}")  # Should return "Recipe for Chicken Salad"
+
+
+    def test_pagination(self):
+        """
+        Test that pagination works and only 10 items are returned per page.
+        """
+        self.client.force_authenticate(user=self.regular_user)
+        for i in range(15):
+            Recipe.objects.create(
+                meal=self.meal_1,
+                instructions=f"Recipe {i} instructions.",
+                ingredients=f"Ingredient {i}"
+            )
+
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 10)  # Should return 10 recipes per page
+        self.assertIn('next', response.data)  # Should have a 'next' page
+
+
+    def test_search_functionality(self):
+        """
+        Test that the search query works correctly.
+        """
+        self.client.force_authenticate(user=self.regular_user)
+
+        # Perform the search query (search by recipe instructions)
+        response = self.client.get(self.url, {'search': 'Chicken'}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreater(len(response.data['results']), 0)
+        self.assertEqual(response.data['results'][0]['instructions'], self.recipe_1.instructions)

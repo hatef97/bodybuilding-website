@@ -128,7 +128,7 @@ class MealPlanViewSet(viewsets.ModelViewSet):
         if isinstance(exc, ValidationError):
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return super().handle_exception(exc)
-        
+
     def create(self, request, *args, **kwargs):
         """
         Handle creation of a MealPlan with related meals.
@@ -160,22 +160,33 @@ class MealPlanViewSet(viewsets.ModelViewSet):
 
 
 
-# class RecipeViewSet(viewsets.ModelViewSet):
-#     """
-#     ViewSet for managing recipes.
-#     """
-#     queryset = Recipe.objects.all()
-#     serializer_class = RecipeSerializer
-#     pagination_class = StandardResultsSetPagination  # Use pagination for large result sets
+class RecipeViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing recipes.
+    """
+    queryset = Recipe.objects.all().order_by('id')
+    serializer_class = RecipeSerializer
+    pagination_class = StandardResultsSetPagination  # Use pagination for large result sets
 
-#     def get_permissions(self):
-#         """
-#         Allow authenticated users to perform CRUD operations on meal plans.
-#         """
-#         if self.action in ['create', 'update', 'destroy']:
-#             return [IsAdminUser()]  # Only admins can create, update, or destroy meal plans
-#         return [IsAuthenticated()]  # Any authenticated user can list or view meal plans
+    def get_permissions(self):
+        """
+        Allow authenticated users to perform CRUD operations on meal plans.
+        """
+        if self.action in ['create', 'update', 'destroy']:
+            return [IsAdminUser()]  # Only admins can create, update, or destroy meal plans
+        return [IsAuthenticated()]  # Any authenticated user can list or view meal plans
 
+    def update(self, request, *args, **kwargs):
+        """
+        Handle updating an existing Recipe instance.
+        """
+        recipe = self.get_object()
+        serializer = self.get_serializer(recipe, data=request.data, partial=True)
+
+        if serializer.is_valid():
+            serializer.save()  # Save the updated recipe
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 # class CalorieCalculatorViewSet(viewsets.ModelViewSet):
