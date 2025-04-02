@@ -44,3 +44,24 @@ class BodyMeasurement(models.Model):
 
     def __str__(self):
         return f"{self.user} measurements on {self.date_logged}"
+
+
+
+class ProgressLog(models.Model):
+    """
+    Allows users to write notes about their progress, including milestones or reflections.
+    """
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='progress_logs')
+    title = models.CharField(max_length=100, blank=True)
+    note = models.TextField(blank=True, help_text="User's personal notes or fitness reflections.")
+    image = models.ImageField(upload_to='progress_photos/', null=True, blank=True, help_text="Optional progress photo.")
+    date_logged = models.DateField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date_logged']
+        verbose_name = 'Progress Log'
+        verbose_name_plural = 'Progress Logs'
+
+    def __str__(self):
+        return f"{self.user} progress log on {self.date_logged}"
+        
