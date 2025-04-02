@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from core.models import CustomUser as User
-from progress.models import WeightLog
+from progress.models import WeightLog, BodyMeasurement
 
 
 
@@ -70,3 +70,85 @@ class WeightLogModelTests(APITestCase):
         logs = WeightLog.objects.filter(user=test_user)
         self.assertEqual(list(logs)[0].date_logged, day2)
         self.assertEqual(list(logs)[1].date_logged, day1)
+
+
+
+class BodyMeasurementModelTests(APITestCase):
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='testuser@mail.com',
+            username='testuser',
+            password='securepass123'
+        )
+
+
+    def test_create_full_body_measurement(self):
+        measurement = BodyMeasurement.objects.create(
+            user=self.user,
+            chest_cm=100.5,
+            waist_cm=85.2,
+            hips_cm=95.0,
+            biceps_cm=35.5,
+            thighs_cm=60.0,
+            calves_cm=40.0,
+            neck_cm=38.0
+        )
+
+        self.assertEqual(measurement.user, self.user)
+        self.assertEqual(measurement.chest_cm, 100.5)
+        self.assertEqual(measurement.waist_cm, 85.2)
+        self.assertEqual(measurement.date_logged.date(), date.today())
+        self.assertIn("measurements on", str(measurement))
+
+
+    def test_create_partial_body_measurement(self):
+        measurement = BodyMeasurement.objects.create(
+            user=self.user,
+            waist_cm=80.0
+        )
+
+        self.assertIsNone(measurement.chest_cm)
+        self.assertEqual(measurement.waist_cm, 80.0)
+
+    def test_unique_body_measurement_per_day(self):
+        BodyMeasurement.objects.create(user=self.user, chest_cm=90.0)
+
+        with self.assertRaises(Exception):  # could be IntegrityError depending on DB
+            BodyMeasurement.objects.create(user=self.user, waist_cm=85.0)
+
+
+    def test_multiple_users_same_day_allowed(self):
+        user2 = User.objects.create_user(
+            email='user2@mail.com',
+            username='user2',
+            password='securepass456'
+        )
+
+        BodyMeasurement.objects.create(user=self.user, chest_cm=90.0)
+        other_measurement = BodyMeasurement.objects.create(user=user2, chest_cm=91.0)
+
+        self.assertEqual(other_measurement.user, user2)
+        self.assertEqual(other_measurement.chest_cm, 91.0)
+
+
+    def test_str_representation(self):
+        measurement = BodyMeasurement.objects.create(
+            user=self.user,
+            chest_cm=99.9,
+            date_logged=date(2023, 8, 10)
+        )
+
+        self.assertEqual(str(measurement), f"{self.user} measurements on 2023-08-10")
+
+
+    def test_ordering_by_date_logged_desc(self):
+        date1 = timezone.now().date() - timedelta(days=2)
+        date2 = timezone.now().date() - timedelta(days=1)
+
+        BodyMeasurement.objects.create(user=self.user, waist_cm=85.0, date_logged=date1)
+        BodyMeasurement.objects.create(user=self.user, waist_cm=83.0, date_logged=date2)
+
+        logs = BodyMeasurement.objects.filter(user=self.user)
+        self.assertEqual(logs[0].date_logged, date2)
+        self.assertEqual(logs[1].date_logged, date1)

@@ -35,7 +35,7 @@ class BodyMeasurement(models.Model):
     thighs_cm = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     calves_cm = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     neck_cm = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    date_logged = models.DateField(auto_now_add=True)
+    date_logged = models.DateField(default=timezone.now)
 
     class Meta:
         ordering = ['-date_logged']
@@ -56,7 +56,7 @@ class ProgressLog(models.Model):
     title = models.CharField(max_length=100, blank=True)
     note = models.TextField(blank=True, help_text="User's personal notes or fitness reflections.")
     image = models.ImageField(upload_to='progress_photos/', null=True, blank=True, help_text="Optional progress photo.")
-    date_logged = models.DateField(auto_now_add=True)
+    date_logged = models.DateField(default=timezone.now)
 
     class Meta:
         ordering = ['-date_logged']
@@ -64,5 +64,5 @@ class ProgressLog(models.Model):
         verbose_name_plural = 'Progress Logs'
 
     def __str__(self):
-        return f"{self.user} progress log on {self.date_logged}"
+        return f"{self.user} progress log on {self.date_logged.date()}"
         
