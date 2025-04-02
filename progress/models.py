@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 
 
@@ -9,7 +10,7 @@ class WeightLog(models.Model):
     """
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='weight_logs')
     weight_kg = models.DecimalField(max_digits=5, decimal_places=2, help_text="Weight in kilograms")
-    date_logged = models.DateField(auto_now_add=True)
+    date_logged = models.DateField(default=timezone.now)
 
     class Meta:
         ordering = ['-date_logged']
@@ -18,7 +19,7 @@ class WeightLog(models.Model):
         unique_together = ('user', 'date_logged')
 
     def __str__(self):
-        return f"{self.user} - {self.weight_kg}kg on {self.date_logged}"
+        return f"{self.user} - {self.weight_kg}kg on {self.date_logged.date()}"
 
 
 
