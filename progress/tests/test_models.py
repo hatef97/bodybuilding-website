@@ -2,11 +2,12 @@ from datetime import date, timedelta
 
 from django.db.utils import IntegrityError
 from django.utils import timezone
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 from rest_framework.test import APITestCase
 
 from core.models import CustomUser as User
-from progress.models import WeightLog, BodyMeasurement
+from progress.models import WeightLog, BodyMeasurement, ProgressLog
 
 
 
@@ -152,3 +153,69 @@ class BodyMeasurementModelTests(APITestCase):
         logs = BodyMeasurement.objects.filter(user=self.user)
         self.assertEqual(logs[0].date_logged, date2)
         self.assertEqual(logs[1].date_logged, date1)
+
+
+
+class ProgressLogModelTests(APITestCase):
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='loguser@mail.com',
+            username='loguser',
+            password='securepass123'
+        )
+
+
+    def test_create_progress_log_minimal(self):
+        log = ProgressLog.objects.create(
+            user=self.user,
+            note="Hit a new personal best today!"
+        )
+        self.assertEqual(log.user, self.user)
+        self.assertEqual(log.note, "Hit a new personal best today!")
+        self.assertEqual(log.title, "")
+        self.assertIsNone(log.image.name)
+        self.assertEqual(log.date_logged.date(), date.today())
+        self.assertIn("progress log on", str(log))
+
+
+    def test_create_progress_log_full(self):
+        image = SimpleUploadedFile("progress.jpg", b"filecontent", content_type="image/jpeg")
+        log = ProgressLog.objects.create(
+            user=self.user,
+            title="Week 4 Check-In",
+            note="Down 2kg, looking leaner!",
+            image=image
+        )
+        self.assertEqual(log.title, "Week 4 Check-In")
+        self.assertTrue(log.image.name.startswith("progress_photos/"))
+
+
+    def test_multiple_logs_same_day_allowed(self):
+        ProgressLog.objects.create(user=self.user, note="Morning check-in")
+        ProgressLog.objects.create(user=self.user, note="Evening update")
+
+        logs = ProgressLog.objects.filter(user=self.user)
+        self.assertEqual(logs.count(), 2)
+
+
+    def test_str_representation(self):
+        log = ProgressLog.objects.create(
+            user=self.user,
+            title="Milestone",
+            note="Hit goal weight!",
+            date_logged=date(2024, 1, 1)
+        )
+        self.assertEqual(str(log), f"{self.user} progress log on 2024-01-01")
+
+
+    def test_ordering_by_date_logged_desc(self):
+        day1 = timezone.now().date() - timedelta(days=2)
+        day2 = timezone.now().date() - timedelta(days=1)
+
+        ProgressLog.objects.create(user=self.user, note="Day 1", date_logged=day1)
+        ProgressLog.objects.create(user=self.user, note="Day 2", date_logged=day2)
+
+        logs = ProgressLog.objects.filter(user=self.user)
+        self.assertEqual(logs[0].date_logged, day2)
+        self.assertEqual(logs[1].date_logged, day1)

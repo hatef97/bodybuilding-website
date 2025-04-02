@@ -64,5 +64,5 @@ class ProgressLog(models.Model):
         verbose_name_plural = 'Progress Logs'
 
     def __str__(self):
-        return f"{self.user} progress log on {self.date_logged.date()}"
+        return f"{self.user} progress log on {self.date_logged}"
         
