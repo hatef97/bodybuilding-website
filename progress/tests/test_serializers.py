@@ -1,12 +1,14 @@
 from datetime import date
 from decimal import Decimal
+from PIL import Image
+import io
 
 from django.utils import timezone
+from django.core.files.uploadedfile import SimpleUploadedFile
 
-from rest_framework.test import APITestCase
+from rest_framework.test import APITestCase, APIRequestFactory
 from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
-from rest_framework.test import APIRequestFactory
 from rest_framework.authentication import SessionAuthentication
 
 from core.models import CustomUser as User
@@ -171,4 +173,107 @@ class BodyMeasurementSerializerTests(APITestCase):
         }
 
         self.assertEqual(set(serializer.data.keys()), expected_keys - {'user'})  # 'user' is write-only
-        
+
+
+
+def generate_test_image():
+    image_io = io.BytesIO()
+    image = Image.new("RGB", (100, 100), color="blue")
+    image.save(image_io, format='JPEG')
+    image_io.seek(0)
+    return SimpleUploadedFile("test.jpg", image_io.read(), content_type="image/jpeg")
+
+
+
+class ProgressLogSerializerTests(APITestCase):
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='progress@mail.com',
+            username='progressuser',
+            password='secure123'
+        )
+
+
+    def _fake_request(self):
+        factory = APIRequestFactory()
+        request = factory.post('/fake-url/')
+        request.user = self.user
+        request._force_auth_user = self.user
+        return Request(request)
+
+
+    def test_valid_data_creates_log(self):
+        data = {
+            'title': 'Day 10',
+            'note': 'Feeling stronger!'
+        }
+
+        serializer = ProgressLogSerializer(data=data, context={'request': self._fake_request()})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        log = serializer.save()
+
+        self.assertEqual(log.user, self.user)
+        self.assertEqual(log.title, 'Day 10')
+        self.assertEqual(log.note, 'Feeling stronger!')
+        self.assertEqual(log.date_logged.date(), date.today())
+
+
+    def test_image_upload_optional(self):
+        fake_image = generate_test_image()
+
+        data = {
+            'title': 'With Photo',
+            'note': 'Visible results!',
+            'image': fake_image
+        }
+
+        serializer = ProgressLogSerializer(data=data, context={'request': self._fake_request()})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        log = serializer.save()
+
+        self.assertTrue(log.image.name.startswith("progress_photos/"))
+
+
+    def test_duplicate_same_day_prevented(self):
+        ProgressLog.objects.create(user=self.user, note="First log", date_logged=date.today())
+
+        data = {'note': 'Second log'}
+        serializer = ProgressLogSerializer(data=data, context={'request': self._fake_request()})
+
+        with self.assertRaises(ValidationError) as ctx:
+            serializer.is_valid(raise_exception=True)
+
+        self.assertIn("You already have a progress log for today.", str(ctx.exception))
+
+
+    def test_date_logged_is_read_only(self):
+        data = {
+            'title': 'Override date',
+            'note': 'Trying to set a date manually',
+            'date_logged': '2000-01-01'
+        }
+
+        serializer = ProgressLogSerializer(data=data, context={'request': self._fake_request()})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        log = serializer.save()
+
+        self.assertNotEqual(str(log.date_logged), '2000-01-01')
+        self.assertEqual(log.date_logged.date(), date.today())
+
+
+    def test_serializer_output_format(self):
+        log = ProgressLog.objects.create(
+            user=self.user,
+            title='Check-in',
+            note='Progress made!',
+            date_logged=timezone.now().date()
+        )
+
+        serializer = ProgressLogSerializer(instance=log)
+        expected_keys = {'id', 'title', 'note', 'image', 'date_logged'}
+
+        self.assertEqual(set(serializer.data.keys()), expected_keys)  # user is HiddenField
+        self.assertEqual(serializer.data['title'], 'Check-in')
+        self.assertEqual(serializer.data['note'], 'Progress made!')
+        self.assertEqual(serializer.data['date_logged'], str(log.date_logged))
