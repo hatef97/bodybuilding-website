@@ -20,13 +20,14 @@ class WeightLogSerializer(serializers.ModelSerializer):
         Prevent a user from creating multiple logs for the same day.
         """
         user = self.context['request'].user
-        today = data.get('date_logged') or timezone.now().date()
+        if not user or user.is_anonymous:
+            raise serializers.ValidationError("Authenticated user is required.")
 
+        today = timezone.now().date()
         if WeightLog.objects.filter(user=user, date_logged=today).exists():
             raise serializers.ValidationError("You have already logged your weight today.")
 
         return data
-
 
 
 class BodyMeasurementSerializer(serializers.ModelSerializer):
