@@ -4,12 +4,12 @@ from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework import status
 
-from .models import WeightLog
-from .serializers import WeightLogSerializer
+from .models import *
+from .serializers import *
 
 
 
-class WeightLogPagination(PageNumberPagination):
+class StandardResultsSetPagination(PageNumberPagination):
     page_size = 10  
     page_size_query_param = 'page_size'
     max_page_size = 100
@@ -17,10 +17,9 @@ class WeightLogPagination(PageNumberPagination):
 
 
 class WeightLogViewSet(viewsets.ModelViewSet):
-    queryset = WeightLog.objects.all()
     serializer_class = WeightLogSerializer
     permission_classes = [permissions.IsAuthenticated]
-    pagination_class = WeightLogPagination
+    pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
         """
@@ -47,3 +46,37 @@ class WeightLogViewSet(viewsets.ModelViewSet):
             serializer = self.get_serializer(today_log)
             return Response(serializer.data)
         return Response({"detail": "No log for today."}, status=status.HTTP_404_NOT_FOUND)
+
+
+
+class BodyMeasurementViewSet(viewsets.ModelViewSet):
+    serializer_class = BodyMeasurementSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        """
+        Restricts the returned body measurements to a given user,
+        ordered by the most recent first.
+        """
+        user = self.request.user
+        return BodyMeasurement.objects.filter(user=user).order_by('-date_logged')
+
+    def perform_create(self, serializer):
+        """
+        Automatically associate the logged-in user with the measurement entry.
+        """
+        serializer.save(user=self.request.user)
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def today(self, request):
+        """
+        Custom action to get today's body measurements (if any).
+        """
+        user = request.user
+        today_measurement = BodyMeasurement.objects.filter(user=user, date_logged=timezone.now().date()).first()
+        
+        if today_measurement:
+            serializer = self.get_serializer(today_measurement)
+            return Response(serializer.data)
+        return Response({"detail": "No measurements logged for today."}, status=status.HTTP_404_NOT_FOUND)
