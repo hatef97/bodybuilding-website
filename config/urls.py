@@ -24,6 +24,7 @@ urlpatterns = [
     path('auth/', include('djoser.urls.authtoken')),  # 👈 login/logout using tokens
     path('workout/', include('workouts.urls')),  # Include workout-related API URLs
     path('nutrition/', include('nutrition.urls')),  # Include nutrion-related API URLs
+    path('progress/', include('progress.urls')),    # Include progress-related API URLs
 ]
 
 
