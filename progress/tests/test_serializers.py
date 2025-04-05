@@ -46,7 +46,7 @@ class WeightLogSerializerTests(APITestCase):
         log = serializer.save()
         self.assertEqual(log.user, self.user)
         self.assertEqual(log.weight_kg, 75.5)
-        self.assertEqual(log.date_logged.date(), date.today())
+        self.assertEqual(log.date_logged, date.today())
 
 
     def test_date_logged_is_read_only(self):
@@ -55,7 +55,7 @@ class WeightLogSerializerTests(APITestCase):
         self.assertTrue(serializer.is_valid())
         log = serializer.save()
 
-        self.assertEqual(log.date_logged.date(), date.today())  # Ignored the input
+        self.assertEqual(log.date_logged, date.today())  # Ignored the input
 
 
     def test_prevent_duplicate_log_same_day(self):
@@ -78,7 +78,7 @@ class WeightLogSerializerTests(APITestCase):
                 date_logged=timezone.now().date()  
             )
         serializer = WeightLogSerializer(instance=log)
-        expected_keys = {'id', 'weight_kg', 'date_logged'}
+        expected_keys = {'id', 'weight_kg', 'date_logged', 'user_id'}
 
         self.assertEqual(set(serializer.data.keys()), expected_keys)
         self.assertEqual(serializer.data['weight_kg'], Decimal('78.30'))

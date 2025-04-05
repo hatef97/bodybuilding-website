@@ -9,10 +9,12 @@ from .models import WeightLog, BodyMeasurement, ProgressLog
 class WeightLogSerializer(serializers.ModelSerializer):
     user = serializers.HiddenField(default=serializers.CurrentUserDefault())
     date_logged = serializers.DateField(read_only=True)
+    # Explicitly add user_id field
+    user_id = serializers.PrimaryKeyRelatedField(read_only=True, source='user')
 
     class Meta:
         model = WeightLog
-        fields = ['id', 'user', 'weight_kg', 'date_logged']
+        fields = ['id', 'user', 'user_id', 'weight_kg', 'date_logged']
         read_only_fields = ['id', 'date_logged']  # Prevent user from overriding date
 
     def validate(self, data):
@@ -23,7 +25,7 @@ class WeightLogSerializer(serializers.ModelSerializer):
         if not user or user.is_anonymous:
             raise serializers.ValidationError("Authenticated user is required.")
 
-        today = timezone.now().date()
+        today = data.get('date_logged') or timezone.now().date()
         if WeightLog.objects.filter(user=user, date_logged=today).exists():
             raise serializers.ValidationError("You have already logged your weight today.")
 

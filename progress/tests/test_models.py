@@ -26,8 +26,8 @@ class WeightLogModelTests(APITestCase):
         log = WeightLog.objects.create(user=self.user, weight_kg=74.25)
         self.assertEqual(log.user, self.user)
         self.assertEqual(log.weight_kg, 74.25)
-        self.assertEqual(log.date_logged.date(), date.today())
-        self.assertEqual(str(log), f"{self.user} - 74.25kg on {log.date_logged.date()}")
+        self.assertEqual(log.date_logged, date.today())
+        self.assertEqual(str(log), f"{self.user} - 74.25kg on {log.date_logged}")
 
 
     def test_weight_log_unique_per_day(self):
