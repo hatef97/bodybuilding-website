@@ -175,7 +175,7 @@ class ProgressLogModelTests(APITestCase):
         self.assertEqual(log.note, "Hit a new personal best today!")
         self.assertEqual(log.title, "")
         self.assertIsNone(log.image.name)
-        self.assertEqual(log.date_logged.date(), date.today())
+        self.assertEqual(log.date_logged, date.today())
         self.assertIn("progress log on", str(log))
 
 

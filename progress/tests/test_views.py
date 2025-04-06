@@ -214,7 +214,7 @@ class BodyMeasurementViewSetTests(APITestCase):
 
     def test_create_body_measurement(self):       
         """Test creating a new body measurement entry."""
-        # Remove any existing weight log for today before starting the test
+        # Remove any existing Body Measurement for today before starting the test
         BodyMeasurement.objects.filter(user=self.user, date_logged=date.today()).delete()        
         self.client.force_authenticate(user=self.user)
         url = reverse('bodymeasurement-list')  # Replace with your actual URL
@@ -268,3 +268,118 @@ class BodyMeasurementViewSetTests(APITestCase):
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+
+class ProgressLogViewSetTests(APITestCase):
+    
+    def setUp(self):
+        # Create a test user
+        self.user = User.objects.create_user(
+            email="testuser@mail.com",
+            username="testuser",
+            password="securepass123"
+        )
+
+        # Create some test ProgressLog entries
+        self.progress_log_1 = ProgressLog.objects.create(
+            user=self.user,
+            title="Log 1",
+            note="This is a test progress log",
+            date_logged=date.today() - timedelta(days=1)  # yesterday's log
+        )
+        
+        self.progress_log_2 = ProgressLog.objects.create(
+            user=self.user,
+            title="Log 2",
+            note="This is another test progress log",
+            date_logged=date.today()  # today's log
+        )
+
+        # Create logs for other users, but ensure these aren't returned in the test
+        another_user = User.objects.create_user(
+            email="anotheruser@mail.com",
+            username="anotheruser",
+            password="anotherpassword"
+        )
+
+        ProgressLog.objects.create(
+            user=another_user,
+            title="Another User's Log",
+            note="This log should not be returned for the test user",
+            date_logged=date.today() - timedelta(days=2)
+        )
+
+
+    def test_list_progress_logs(self):
+        # Ensure the user is authenticated
+        self.client.force_authenticate(user=self.user)
+
+        # Send GET request to list the progress logs
+        url = reverse('progresslog-list')
+        response = self.client.get(url)
+
+        # Check if the response is 200 OK
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        # Ensure that the response contains the progress logs for the authenticated user only
+        self.assertEqual(len(response.data['results']), 2)  # Should return only 2 logs for the authenticated user
+        self.assertEqual(response.data['results'][0]['id'], self.progress_log_2.id)  # The most recent log should be first
+
+
+    def test_create_progress_log(self):
+        # Ensure the user is authenticated
+        # Remove any existing Progress log for today before starting the test
+        ProgressLog.objects.filter(user=self.user, date_logged=date.today()).delete()         
+        self.client.force_authenticate(user=self.user)
+
+        # Prepare data for creating a new progress log
+        data = {
+            'title': "New Progress Log",
+            'note': "This is a new log for today's progress.",
+        }
+
+        # Send POST request to create a new progress log
+        url = reverse('progresslog-list')
+        response = self.client.post(url, data, format='json')
+
+        # Check if the response is 201 Created
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        # Ensure the new progress log has been created
+        progress_log = ProgressLog.objects.get(id=response.data['id'])  # Use the ID from the response
+        self.assertEqual(progress_log.title, "New Progress Log")
+        self.assertEqual(progress_log.user, self.user)
+        self.assertEqual(progress_log.date_logged, date.today())  # Should be today's date since no date was passed
+
+
+    def test_get_today_progress_log(self):
+        # Ensure the user is authenticated
+        self.client.force_authenticate(user=self.user)
+
+        # Send GET request to retrieve today's progress log
+        url = reverse('progresslog-today')
+        response = self.client.get(url)
+
+        # Check if the response is 200 OK
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        # Ensure the correct log is returned for today
+        self.assertEqual(response.data['id'], self.progress_log_2.id)
+        self.assertEqual(response.data['title'], self.progress_log_2.title)
+        
+
+    def test_get_today_progress_log_no_log(self):
+        # Ensure the user is authenticated
+        self.client.force_authenticate(user=self.user)
+
+        # Delete today's progress log to simulate no log
+        ProgressLog.objects.filter(user=self.user, date_logged=date.today()).delete()
+
+        # Send GET request to retrieve today's progress log
+        url = reverse('progresslog-today')
+        response = self.client.get(url)
+
+        # Check if the response status code is 404 (Not Found)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.data['detail'], "No log for today.")

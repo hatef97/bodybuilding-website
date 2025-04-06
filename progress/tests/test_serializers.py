@@ -216,7 +216,7 @@ class ProgressLogSerializerTests(APITestCase):
         self.assertEqual(log.user, self.user)
         self.assertEqual(log.title, 'Day 10')
         self.assertEqual(log.note, 'Feeling stronger!')
-        self.assertEqual(log.date_logged.date(), date.today())
+        self.assertEqual(log.date_logged, date.today())
 
 
     def test_image_upload_optional(self):
@@ -259,7 +259,7 @@ class ProgressLogSerializerTests(APITestCase):
         log = serializer.save()
 
         self.assertNotEqual(str(log.date_logged), '2000-01-01')
-        self.assertEqual(log.date_logged.date(), date.today())
+        self.assertEqual(log.date_logged, date.today())
 
 
     def test_serializer_output_format(self):

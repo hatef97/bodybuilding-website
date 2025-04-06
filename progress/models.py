@@ -56,7 +56,7 @@ class ProgressLog(models.Model):
     title = models.CharField(max_length=100, blank=True)
     note = models.TextField(blank=True, help_text="User's personal notes or fitness reflections.")
     image = models.ImageField(upload_to='progress_photos/', null=True, blank=True, help_text="Optional progress photo.")
-    date_logged = models.DateField(default=timezone.now)
+    date_logged = models.DateField(default=timezone.now().date)
 
     class Meta:
         ordering = ['-date_logged']
