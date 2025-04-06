@@ -4,13 +4,19 @@ from django.utils import timezone
 
 
 
+# Define a function to return the current date
+def get_today_date():
+    return timezone.now().date()
+
+
+
 class WeightLog(models.Model):
     """
     Tracks a user's weight over time.
     """
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='weight_logs')
     weight_kg = models.DecimalField(max_digits=5, decimal_places=2, help_text="Weight in kilograms")
-    date_logged = models.DateField(default=timezone.now().date)
+    date_logged = models.DateField(default=get_today_date)
 
     class Meta:
         ordering = ['-date_logged']
@@ -35,7 +41,7 @@ class BodyMeasurement(models.Model):
     thighs_cm = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     calves_cm = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     neck_cm = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    date_logged = models.DateField(default=timezone.now().date)
+    date_logged = models.DateField(default=get_today_date)
 
     class Meta:
         ordering = ['-date_logged']
@@ -56,7 +62,7 @@ class ProgressLog(models.Model):
     title = models.CharField(max_length=100, blank=True)
     note = models.TextField(blank=True, help_text="User's personal notes or fitness reflections.")
     image = models.ImageField(upload_to='progress_photos/', null=True, blank=True, help_text="Optional progress photo.")
-    date_logged = models.DateField(default=timezone.now().date)
+    date_logged = models.DateField(default=get_today_date)
 
     class Meta:
         ordering = ['-date_logged']
