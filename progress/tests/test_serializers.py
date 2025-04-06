@@ -117,7 +117,7 @@ class BodyMeasurementSerializerTests(APITestCase):
         self.assertEqual(log.user, self.user)
         self.assertEqual(log.chest_cm, Decimal('100.5'))
         self.assertEqual(log.waist_cm, Decimal('85.2'))
-        self.assertEqual(log.date_logged.date(), date.today())
+        self.assertEqual(log.date_logged, date.today())
 
 
     def test_date_logged_is_read_only(self):
@@ -131,7 +131,7 @@ class BodyMeasurementSerializerTests(APITestCase):
         log = serializer.save()
 
         self.assertNotEqual(str(log.date_logged), '2020-01-01')
-        self.assertEqual(log.date_logged.date(), date.today())
+        self.assertEqual(log.date_logged, date.today())
 
 
     def test_duplicate_same_day_prevented(self):
@@ -169,7 +169,7 @@ class BodyMeasurementSerializerTests(APITestCase):
         serializer = BodyMeasurementSerializer(instance=log)
         expected_keys = {
             'id', 'chest_cm', 'waist_cm', 'hips_cm',
-            'biceps_cm', 'thighs_cm', 'calves_cm', 'neck_cm', 'date_logged'
+            'biceps_cm', 'thighs_cm', 'calves_cm', 'neck_cm', 'date_logged', 'user_id'
         }
 
         self.assertEqual(set(serializer.data.keys()), expected_keys - {'user'})  # 'user' is write-only

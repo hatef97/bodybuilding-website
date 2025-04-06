@@ -35,6 +35,7 @@ class WeightLogSerializer(serializers.ModelSerializer):
 class BodyMeasurementSerializer(serializers.ModelSerializer):
     user = serializers.HiddenField(default=serializers.CurrentUserDefault())
     date_logged = serializers.DateField(read_only=True)
+    user_id = serializers.PrimaryKeyRelatedField(read_only=True, source='user')
 
     class Meta:
         model = BodyMeasurement
@@ -48,7 +49,8 @@ class BodyMeasurementSerializer(serializers.ModelSerializer):
             'thighs_cm',
             'calves_cm',
             'neck_cm',
-            'date_logged'
+            'date_logged',
+            'user_id'
         ]
         read_only_fields = ['id', 'date_logged']
 

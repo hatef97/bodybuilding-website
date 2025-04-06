@@ -35,7 +35,7 @@ class BodyMeasurement(models.Model):
     thighs_cm = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     calves_cm = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     neck_cm = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    date_logged = models.DateField(default=timezone.now)
+    date_logged = models.DateField(default=timezone.now().date)
 
     class Meta:
         ordering = ['-date_logged']

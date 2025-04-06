@@ -99,7 +99,7 @@ class BodyMeasurementModelTests(APITestCase):
         self.assertEqual(measurement.user, self.user)
         self.assertEqual(measurement.chest_cm, 100.5)
         self.assertEqual(measurement.waist_cm, 85.2)
-        self.assertEqual(measurement.date_logged.date(), date.today())
+        self.assertEqual(measurement.date_logged, date.today())
         self.assertIn("measurements on", str(measurement))
 
 
