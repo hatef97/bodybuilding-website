@@ -1,6 +1,9 @@
 from django.contrib import admin
-from .models import WeightLog, BodyMeasurement, ProgressLog
 from django.utils.html import format_html
+
+from .models import WeightLog, BodyMeasurement, ProgressLog
+
+
 
 # Custom Admin for WeightLog
 class WeightLogAdmin(admin.ModelAdmin):
@@ -23,6 +26,8 @@ class WeightLogAdmin(admin.ModelAdmin):
         self.message_user(request, "Weights reset successfully.")
     reset_weights.short_description = "Reset selected weights to 0"
 
+
+
 # Custom Admin for BodyMeasurement
 class BodyMeasurementAdmin(admin.ModelAdmin):
     list_display = ('user', 'chest_cm', 'waist_cm', 'hips_cm', 'date_logged', 'view_user')
@@ -34,6 +39,8 @@ class BodyMeasurementAdmin(admin.ModelAdmin):
     def view_user(self, obj):
         return format_html('<b>{}</b>', obj.user.username)
     view_user.short_description = 'User'
+
+
 
 # Custom Admin for ProgressLog
 class ProgressLogAdmin(admin.ModelAdmin):
@@ -53,6 +60,8 @@ class ProgressLogAdmin(admin.ModelAdmin):
             return format_html('<img src="{}" width="50" height="50"/>'.format(obj.image.url))
         return "No image"
     get_image.short_description = 'Image'
+
+
 
 # Register models with custom admin
 admin.site.register(WeightLog, WeightLogAdmin)
