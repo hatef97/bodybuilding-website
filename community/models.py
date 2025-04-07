@@ -38,9 +38,14 @@ class Comment(models.Model):
     """Comment on a forum post."""
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='comments')
     post = models.ForeignKey(ForumPost, on_delete=models.CASCADE, related_name='comments')
-    content = models.TextField()
+    content = models.TextField(blank=False)
     created_at = models.DateTimeField(default=timezone.now)
     is_active = models.BooleanField(default=True)  # To manage comment visibility (soft delete feature)
+    
+    def clean(self):
+        """Override the clean method to validate the content field."""
+        if not self.content.strip():  # Ensure content is not empty or only whitespace
+            raise ValidationError("Comment content cannot be empty.")
 
     def __str__(self):
         return f"Comment by {self.user.username} on {self.post.title}"
