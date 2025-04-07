@@ -70,4 +70,18 @@ class Leaderboard(models.Model):
     class Meta:
         ordering = ['-score']
         unique_together = ['challenge', 'user']  # Ensure each user has a unique entry in the leaderboard for each challenge
+
+
+
+# User Profile for Forum and Social features
+class UserProfile(models.Model):
+    """User profile that stores additional information about a user."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    bio = models.TextField(blank=True, null=True)
+    profile_picture = models.ImageField(upload_to='profile_pics/', null=True, blank=True)
+    social_links = models.JSONField(default=dict, blank=True)  # To store social media links (Facebook, Twitter, etc.)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Profile of {self.user.username}"
         
