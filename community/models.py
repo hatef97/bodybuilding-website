@@ -38,3 +38,19 @@ class Comment(models.Model):
 
     class Meta:
         ordering = ['created_at']
+
+
+
+# Challenge Model
+class Challenge(models.Model):
+    """Challenge where users can compete with each other."""
+    name = models.CharField(max_length=255)
+    description = models.TextField()
+    start_date = models.DateTimeField()
+    end_date = models.DateTimeField()
+    participants = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='challenges')
+    created_at = models.DateTimeField(default=timezone.now)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.name
