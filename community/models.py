@@ -1,4 +1,3 @@
-# community/models.py
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
@@ -10,11 +9,21 @@ from django.core.exceptions import ValidationError
 class ForumPost(models.Model):
     """Forum post where users can create discussions."""
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='posts')
-    title = models.CharField(max_length=255)
+    title = models.CharField(max_length=255, blank=False)
     content = models.TextField()
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)  # To manage post visibility (soft delete feature)
+    
+    def clean(self):
+        """Custom validation to ensure title is not blank."""
+        if not self.title.strip():
+            raise ValidationError("Title cannot be blank.")
+
+    def save(self, *args, **kwargs):
+        """Override save to invoke the clean method and trigger validation."""
+        self.full_clean()  # This will call the clean method and raise ValidationError if invalid
+        super(ForumPost, self).save(*args, **kwargs)  # Call the actual save method
 
     def __str__(self):
         return self.title
@@ -84,4 +93,3 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return f"Profile of {self.user.username}"
-        
