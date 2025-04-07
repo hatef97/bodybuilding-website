@@ -54,3 +54,20 @@ class Challenge(models.Model):
 
     def __str__(self):
         return self.name
+
+
+
+# Leaderboard Model
+class Leaderboard(models.Model):
+    """Stores leaderboards based on challenge participation or other metrics."""
+    challenge = models.ForeignKey(Challenge, on_delete=models.CASCADE, related_name='leaderboards')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='leaderboards')
+    score = models.PositiveIntegerField()  # The score could be based on challenge performance, activity, etc.
+
+    def __str__(self):
+        return f"{self.user.username} - {self.challenge.name} - {self.score}"
+
+    class Meta:
+        ordering = ['-score']
+        unique_together = ['challenge', 'user']  # Ensure each user has a unique entry in the leaderboard for each challenge
+        
