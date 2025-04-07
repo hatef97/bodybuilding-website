@@ -3,7 +3,7 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 
-from community.models import ForumPost, Comment
+from community.models import ForumPost, Comment, Challenge
 
 
 
@@ -184,4 +184,79 @@ class CommentModelTests(TestCase):
         with self.assertRaises(ValidationError):
             comment.clean()  # Manually trigger the clean method
             comment.save()  # Attempt to save the comment
-            
+
+
+
+class ChallengeModelTests(TestCase):
+
+    def setUp(self):
+        """Set up a test user and challenge data."""
+        # Create a test user
+        self.user = get_user_model().objects.create_user(
+            email="testuser@mail.com", username="testuser", password="password"
+        )
+
+        # Create a challenge
+        self.challenge = Challenge.objects.create(
+            name="Test Challenge",
+            description="This is a test challenge.",
+            start_date=timezone.now() + timezone.timedelta(days=1),  # Tomorrow
+            end_date=timezone.now() + timezone.timedelta(days=5),  # 5 days from now
+        )
+
+
+    def test_challenge_creation(self):
+        """Test that a challenge can be created successfully."""
+        challenge = Challenge.objects.get(id=self.challenge.id)
+        self.assertEqual(challenge.name, "Test Challenge")
+        self.assertEqual(challenge.description, "This is a test challenge.")
+        self.assertTrue(challenge.start_date > timezone.now())  # Ensure start date is in the future
+        self.assertTrue(challenge.end_date > challenge.start_date)  # Ensure end date is after start date
+        self.assertTrue(challenge.is_active)  # By default, the challenge should be active
+
+
+    def test_challenge_invalid_end_date(self):
+        """Test that a challenge cannot be created with an end date earlier than the start date."""
+        invalid_end_date = timezone.now() - timezone.timedelta(days=1)  # End date in the past
+        challenge = Challenge(
+            name="Invalid Challenge",
+            description="This challenge has an invalid date.",
+            start_date=timezone.now() + timezone.timedelta(days=1),
+            end_date=invalid_end_date,
+        )
+        with self.assertRaises(ValidationError):
+            challenge.full_clean()  # This will call the clean() method and raise ValidationError if invalid
+            challenge.save()  # Will not reach this point if ValidationError is raised
+
+
+    def test_challenge_soft_delete(self):
+        """Test the soft delete functionality via the is_active field."""
+        challenge = Challenge.objects.get(id=self.challenge.id)
+        
+        # Challenge should be active by default
+        self.assertTrue(challenge.is_active)
+
+        # Deactivate (soft delete) the challenge
+        challenge.is_active = False
+        challenge.save()
+
+        # Fetch the challenge and verify the soft delete
+        challenge = Challenge.objects.get(id=self.challenge.id)
+        self.assertFalse(challenge.is_active)
+
+
+    def test_adding_participants(self):
+        """Test that users can be added as participants to a challenge."""
+        challenge = self.challenge
+
+        # Add the test user as a participant
+        challenge.participants.add(self.user)
+
+        # Verify the user is added to the participants
+        self.assertIn(self.user, challenge.participants.all())
+
+
+    def test_challenge_str_method(self):
+        """Test the __str__ method of the Challenge model."""
+        challenge = Challenge.objects.get(id=self.challenge.id)
+        self.assertEqual(str(challenge), "Test Challenge")

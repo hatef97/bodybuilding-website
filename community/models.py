@@ -65,7 +65,12 @@ class Challenge(models.Model):
     participants = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='challenges')
     created_at = models.DateTimeField(default=timezone.now)
     is_active = models.BooleanField(default=True)
-
+    
+    def clean(self):
+        """Ensure the end date is after the start date."""
+        if self.end_date < self.start_date:
+            raise ValidationError("End date cannot be earlier than start date.")
+    
     def __str__(self):
         return self.name
 
