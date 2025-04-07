@@ -21,4 +21,20 @@ class ForumPost(models.Model):
 
     class Meta:
         ordering = ['-created_at']
-        
+
+
+
+# Comment Model
+class Comment(models.Model):
+    """Comment on a forum post."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='comments')
+    post = models.ForeignKey(ForumPost, on_delete=models.CASCADE, related_name='comments')
+    content = models.TextField()
+    created_at = models.DateTimeField(default=timezone.now)
+    is_active = models.BooleanField(default=True)  # To manage comment visibility (soft delete feature)
+
+    def __str__(self):
+        return f"Comment by {self.user.username} on {self.post.title}"
+
+    class Meta:
+        ordering = ['created_at']
