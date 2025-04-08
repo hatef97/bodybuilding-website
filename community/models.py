@@ -83,6 +83,11 @@ class Leaderboard(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='leaderboards')
     score = models.PositiveIntegerField()  # The score could be based on challenge performance, activity, etc.
 
+    def clean(self):
+        """Ensure that score is a positive integer."""
+        if self.score <= 0:
+            raise ValidationError("Score must be a positive integer.")
+            
     def __str__(self):
         return f"{self.user.username} - {self.challenge.name} - {self.score}"
 

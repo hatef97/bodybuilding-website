@@ -2,8 +2,9 @@ from django.test import TestCase
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 
-from community.models import ForumPost, Comment, Challenge
+from community.models import ForumPost, Comment, Challenge, Leaderboard
 
 
 
@@ -260,3 +261,173 @@ class ChallengeModelTests(TestCase):
         """Test the __str__ method of the Challenge model."""
         challenge = Challenge.objects.get(id=self.challenge.id)
         self.assertEqual(str(challenge), "Test Challenge")
+
+
+
+class LeaderboardModelTests(TestCase):
+
+    def setUp(self):
+        """Set up test users and a challenge for leaderboard tests."""
+        # Create a test user
+        self.user_1 = get_user_model().objects.create_user(
+            email="testuser1@mail.com", username="testuser1", password="password"
+        )
+        self.user_2 = get_user_model().objects.create_user(
+            email="testuser2@mail.com", username="testuser2", password="password"
+        )
+
+        # Create a challenge
+        self.challenge = Challenge.objects.create(
+            name="Test Challenge",
+            description="This is a test challenge.",
+            start_date=timezone.now() + timezone.timedelta(days=1),  # Tomorrow
+            end_date=timezone.now() + timezone.timedelta(days=5),  # 5 days from now
+        )
+
+        # Create leaderboard entries
+        self.leaderboard_1 = Leaderboard.objects.create(
+            challenge=self.challenge,
+            user=self.user_1,
+            score=100,
+        )
+
+        self.leaderboard_2 = Leaderboard.objects.create(
+            challenge=self.challenge,
+            user=self.user_2,
+            score=150,
+        )
+
+
+    def test_leaderboard_creation(self):
+        """Test if a leaderboard entry can be created successfully."""
+        leaderboard = Leaderboard.objects.get(id=self.leaderboard_1.id)
+        self.assertEqual(leaderboard.challenge, self.challenge)
+        self.assertEqual(leaderboard.user, self.user_1)
+        self.assertEqual(leaderboard.score, 100)
+
+
+    def test_leaderboard_str_method(self):
+        """Test the __str__ method of the Leaderboard model."""
+        leaderboard = Leaderboard.objects.get(id=self.leaderboard_1.id)
+        self.assertEqual(str(leaderboard), "testuser1 - Test Challenge - 100")
+
+
+    def test_leaderboard_ordering(self):
+        """Test that leaderboard entries are ordered by score in descending order."""
+        # Clear out existing leaderboard entries and challenges to avoid duplicates
+        Leaderboard.objects.all().delete()
+        Challenge.objects.all().delete()
+        get_user_model().objects.all().delete()  # Delete all users
+
+        # Create a test user
+        self.user_1 = get_user_model().objects.create_user(
+            email="testuser1@mail.com", username="testuser1", password="password"
+        )
+        self.user_2 = get_user_model().objects.create_user(
+            email="testuser2@mail.com", username="testuser2", password="password"
+        ) 
+        self.user_3 = get_user_model().objects.create_user(
+            email="user3@mail.com", username="testuser3", password="password"
+        )
+
+        # Create a challenge
+        self.challenge = Challenge.objects.create(
+            name="Test Challenge",
+            description="This is a test challenge.",
+            start_date=timezone.now() + timezone.timedelta(days=1),  # Tomorrow
+            end_date=timezone.now() + timezone.timedelta(days=5),  # 5 days from now
+        )
+
+        leaderboard_1 = Leaderboard.objects.create(
+            challenge=self.challenge,
+            user=self.user_1,
+            score=100
+        )
+        leaderboard_2 = Leaderboard.objects.create(
+            challenge=self.challenge,
+            user=self.user_2,
+            score=200
+        )
+        leaderboard_3 = Leaderboard.objects.create(
+            challenge=self.challenge,
+            user=self.user_3,
+            score=150
+        )
+
+        leaderboards = Leaderboard.objects.all().order_by('-score')
+
+        # Ensure that leaderboard entries are ordered by score in descending order
+        self.assertGreater(leaderboards[0].score, leaderboards[1].score)
+        self.assertGreater(leaderboards[1].score, leaderboards[2].score)
+
+
+    def test_leaderboard_unique_constraint(self):
+        """Test the unique constraint that each user can have only one leaderboard entry per challenge."""
+        # Clear out existing leaderboard entries and challenges to avoid duplicates
+        Leaderboard.objects.all().delete()
+        Challenge.objects.all().delete()
+        get_user_model().objects.all().delete()  # Delete all users        
+        
+        # Create a test user
+        self.user_1 = get_user_model().objects.create_user(
+            email="testuser1@mail.com", username="testuser1", password="password"
+        )        
+        
+        # Create a challenge
+        self.challenge = Challenge.objects.create(
+            name="Test Challenge",
+            description="This is a test challenge.",
+            start_date=timezone.now() + timezone.timedelta(days=1),  # Tomorrow
+            end_date=timezone.now() + timezone.timedelta(days=5),  # 5 days from now
+        )        
+        
+        leaderboard_1 = Leaderboard.objects.create(
+            challenge=self.challenge,
+            user=self.user_1,
+            score=100
+        )
+
+        with self.assertRaises(IntegrityError):
+            # Trying to insert a duplicate entry for the same challenge and user should raise IntegrityError
+            Leaderboard.objects.create(
+                challenge=self.challenge,
+                user=self.user_1,
+                score=200
+            )
+
+
+    # def test_leaderboard_score_validation(self):
+    #     """Test that leaderboard entries must have a positive score."""
+    #     # Try to create a leaderboard with a negative score or zero (invalid input)
+    #     with self.assertRaises(ValueError):  # This should raise a ValueError
+    #         Leaderboard.objects.create(
+    #             challenge=self.challenge,
+    #             user=self.user_1,
+    #             score=-10  # Invalid negative score
+    #         )
+
+    #     # Try to create a leaderboard with a zero score (invalid input)
+    #     with self.assertRaises(ValueError):  # This should raise a ValueError
+    #         Leaderboard.objects.create(
+    #             challenge=self.challenge,
+    #             user=self.user_2,
+    #             score=0  # Invalid zero score
+    #         )
+
+
+    # def test_leaderboard_unique_per_user_challenge(self):
+    #     """Test that the combination of user and challenge is unique."""
+    #     # Create a valid leaderboard entry first
+    #     leaderboard = Leaderboard.objects.create(
+    #         challenge=self.challenge,
+    #         user=self.user_2,
+    #         score=120,
+    #     )
+    #     # Try creating a duplicate entry for the same user and challenge
+    #     with self.assertRaises(ValidationError):
+    #         leaderboard2 = Leaderboard(
+    #             challenge=self.challenge,
+    #             user=self.user_2,
+    #             score=150,
+    #         )
+    #         leaderboard2.full_clean()  # This should raise a validation error because of the unique constraint
