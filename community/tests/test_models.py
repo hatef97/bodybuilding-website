@@ -396,38 +396,38 @@ class LeaderboardModelTests(TestCase):
             )
 
 
-    # def test_leaderboard_score_validation(self):
-    #     """Test that leaderboard entries must have a positive score."""
-    #     # Try to create a leaderboard with a negative score or zero (invalid input)
-    #     with self.assertRaises(ValueError):  # This should raise a ValueError
-    #         Leaderboard.objects.create(
-    #             challenge=self.challenge,
-    #             user=self.user_1,
-    #             score=-10  # Invalid negative score
-    #         )
+    def test_leaderboard_score_validation(self):
+        """Test that leaderboard entries must have a positive score."""
+        # Try to create a leaderboard with a negative score or zero (invalid input)
+        with self.assertRaises(ValueError):  # This should raise a ValueError
+            Leaderboard.objects.create(
+                challenge=self.challenge,
+                user=self.user_1,
+                score=-10  # Invalid negative score
+            )
 
-    #     # Try to create a leaderboard with a zero score (invalid input)
-    #     with self.assertRaises(ValueError):  # This should raise a ValueError
-    #         Leaderboard.objects.create(
-    #             challenge=self.challenge,
-    #             user=self.user_2,
-    #             score=0  # Invalid zero score
-    #         )
+        # Try to create a leaderboard with a zero score (invalid input)
+        with self.assertRaises(ValueError):  # This should raise a ValueError
+            Leaderboard.objects.create(
+                challenge=self.challenge,
+                user=self.user_2,
+                score=0  # Invalid zero score
+            )
 
 
-    # def test_leaderboard_unique_per_user_challenge(self):
-    #     """Test that the combination of user and challenge is unique."""
-    #     # Create a valid leaderboard entry first
-    #     leaderboard = Leaderboard.objects.create(
-    #         challenge=self.challenge,
-    #         user=self.user_2,
-    #         score=120,
-    #     )
-    #     # Try creating a duplicate entry for the same user and challenge
-    #     with self.assertRaises(ValidationError):
-    #         leaderboard2 = Leaderboard(
-    #             challenge=self.challenge,
-    #             user=self.user_2,
-    #             score=150,
-    #         )
-    #         leaderboard2.full_clean()  # This should raise a validation error because of the unique constraint
+    def test_leaderboard_unique_per_user_challenge(self):
+        """Test that the combination of user and challenge is unique."""
+        # Create a valid leaderboard entry first
+        leaderboard = Leaderboard.objects.create(
+            challenge=self.challenge,
+            user=self.user_2,
+            score=120,
+        )
+        # Try creating a duplicate entry for the same user and challenge
+        with self.assertRaises(ValidationError):
+            leaderboard2 = Leaderboard(
+                challenge=self.challenge,
+                user=self.user_2,
+                score=150,
+            )
+            leaderboard2.full_clean()  # This should raise a validation error because of the unique constraint
