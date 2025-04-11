@@ -1,8 +1,9 @@
 from core.models import CustomUser as User
 
 from rest_framework import serializers
+from rest_framework.validators import UniqueTogetherValidator
 
-from community.models import ForumPost, Comment, Challenge
+from community.models import ForumPost, Comment, Challenge, Leaderboard
 
 
 
@@ -122,3 +123,42 @@ class ChallengeSerializer(serializers.ModelSerializer):
         if participants is not None:
             instance.participants.set(participants)
         return instance
+
+
+
+class LeaderboardSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Leaderboard model, which stores scores associated with a user's participation
+    in a challenge.
+    """
+    class Meta:
+        model = Leaderboard
+        fields = ('id', 'challenge', 'user', 'score')
+        read_only_fields = ('id',)
+        validators = [
+            UniqueTogetherValidator(
+                queryset=Leaderboard.objects.all(),
+                fields=['challenge', 'user'],
+                message="Each user can have only one leaderboard entry per challenge."
+            )
+        ]
+
+    def validate_score(self, value):
+        """
+        Validate that the score is a positive integer.
+        """
+        if value <= 0:
+            raise serializers.ValidationError("Score must be a positive integer.")
+        return value
+
+    def create(self, validated_data):
+        """
+        Create a new Leaderboard entry.
+
+        If the serializer context contains a request and the user is not provided in the input,
+        automatically assign the request.user to the leaderboard entry.
+        """
+        request = self.context.get('request')
+        if request and not validated_data.get('user'):
+            validated_data['user'] = request.user
+        return super().create(validated_data)
