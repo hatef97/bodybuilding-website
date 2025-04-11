@@ -3,8 +3,9 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
+from django.core.files.uploadedfile import SimpleUploadedFile
 
-from community.models import ForumPost, Comment, Challenge, Leaderboard
+from community.models import ForumPost, Comment, Challenge, Leaderboard, UserProfile
 
 
 
@@ -399,35 +400,111 @@ class LeaderboardModelTests(TestCase):
     def test_leaderboard_score_validation(self):
         """Test that leaderboard entries must have a positive score."""
         # Try to create a leaderboard with a negative score or zero (invalid input)
-        with self.assertRaises(ValueError):  # This should raise a ValueError
-            Leaderboard.objects.create(
-                challenge=self.challenge,
-                user=self.user_1,
-                score=-10  # Invalid negative score
-            )
+        leaderboard = Leaderboard(
+            challenge=self.challenge,
+            user=self.user_1,
+            score=-10
+        )
+        with self.assertRaises(ValidationError):
+            leaderboard.full_clean()
+            leaderboard.save()
 
-        # Try to create a leaderboard with a zero score (invalid input)
-        with self.assertRaises(ValueError):  # This should raise a ValueError
-            Leaderboard.objects.create(
-                challenge=self.challenge,
-                user=self.user_2,
-                score=0  # Invalid zero score
-            )
+        leaderboard = Leaderboard(
+            challenge=self.challenge,
+            user=self.user_2,
+            score=0
+        )
+        with self.assertRaises(ValidationError):
+            leaderboard.full_clean()
+            leaderboard.save()
 
 
     def test_leaderboard_unique_per_user_challenge(self):
         """Test that the combination of user and challenge is unique."""
         # Create a valid leaderboard entry first
-        leaderboard = Leaderboard.objects.create(
-            challenge=self.challenge,
-            user=self.user_2,
-            score=120,
-        )
-        # Try creating a duplicate entry for the same user and challenge
-        with self.assertRaises(ValidationError):
-            leaderboard2 = Leaderboard(
+        with self.assertRaises(IntegrityError):
+            Leaderboard.objects.create(
                 challenge=self.challenge,
                 user=self.user_2,
                 score=150,
             )
-            leaderboard2.full_clean()  # This should raise a validation error because of the unique constraint
+
+
+
+class UserProfileModelTests(TestCase):
+
+    def setUp(self):
+        # Create a test user for all test cases
+        self.user = get_user_model().objects.create_user(
+            email="user@example.com", username="testuser", password="password123"
+        )
+
+
+    def test_create_user_profile_with_required_fields(self):
+        """Test that a UserProfile is created with the required fields and defaults."""
+        profile = UserProfile.objects.create(user=self.user, bio="Test bio")
+        self.assertEqual(profile.user, self.user)
+        self.assertEqual(profile.bio, "Test bio")
+        self.assertEqual(profile.social_links, {})  # default value
+        # Check that profile_picture is falsy.
+        self.assertFalse(profile.profile_picture)
+        # Instead of comparing to an empty string, assert that the name attribute is falsy.
+        self.assertFalse(profile.profile_picture.name)
+        self.assertIsNotNone(profile.created_at)  # auto_now_add sets this field
+
+
+    def test_str_method(self):
+        """Test that __str__ returns the expected string representation."""
+        profile = UserProfile.objects.create(user=self.user, bio="Test bio")
+        expected_str = f"Profile of {self.user.username}"
+        self.assertEqual(str(profile), expected_str)
+
+
+    def test_unique_user_profile(self):
+        """Test that each user can have only one UserProfile."""
+        UserProfile.objects.create(user=self.user, bio="Bio 1")
+        with self.assertRaises(IntegrityError):
+            # Creating a second UserProfile for the same user should fail
+            UserProfile.objects.create(user=self.user, bio="Duplicate bio")
+
+
+    def test_profile_picture_upload(self):
+        """Test that uploading a profile picture saves the file with the correct path."""
+        # Simulate an image file upload using SimpleUploadedFile.
+        image_data = b"dummy image content"
+        uploaded_file = SimpleUploadedFile(
+            "test_image.jpg", image_data, content_type="image/jpeg"
+        )
+        profile = UserProfile.objects.create(user=self.user, profile_picture=uploaded_file)
+        self.assertTrue(profile.profile_picture.name.startswith("profile_pics/"))
+
+
+    def test_social_links_default(self):
+        """Test that social_links default to an empty dictionary."""
+        profile = UserProfile.objects.create(user=self.user)
+        self.assertEqual(profile.social_links, {})
+
+
+    def test_social_links_update(self):
+        """Test that social_links can be updated and saved correctly."""
+        profile = UserProfile.objects.create(user=self.user)
+        new_links = {
+            "facebook": "http://facebook.com/testuser",
+            "twitter": "http://twitter.com/testuser"
+        }
+        profile.social_links = new_links
+        profile.save()
+        profile.refresh_from_db()
+        self.assertEqual(profile.social_links, new_links)
+
+
+    def test_bio_can_be_blank(self):
+        """Test that bio can be set to an empty string."""
+        profile = UserProfile.objects.create(user=self.user, bio="")
+        self.assertEqual(profile.bio, "")
+
+
+    def test_bio_can_be_none(self):
+        """Test that bio can be null."""
+        profile = UserProfile.objects.create(user=self.user, bio=None)
+        self.assertIsNone(profile.bio)
