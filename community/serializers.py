@@ -3,7 +3,7 @@ from core.models import CustomUser as User
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
 
-from community.models import ForumPost, Comment, Challenge, Leaderboard
+from community.models import ForumPost, Comment, Challenge, Leaderboard, UserProfile
 
 
 
@@ -162,3 +162,38 @@ class LeaderboardSerializer(serializers.ModelSerializer):
         if request and not validated_data.get('user'):
             validated_data['user'] = request.user
         return super().create(validated_data)
+
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the UserProfile model that stores additional information about a user.
+    """
+    class Meta:
+        model = UserProfile
+        fields = ('id', 'user', 'bio', 'profile_picture', 'social_links', 'created_at')
+        read_only_fields = ('id', 'user', 'created_at')
+
+    def create(self, validated_data):
+        """
+        Create a new UserProfile instance.
+        
+        If a request is provided in the serializer context and the user is not explicitly provided,
+        automatically assign the request's user to the profile.
+        """
+        request = self.context.get('request')
+        if request and not validated_data.get('user'):
+            validated_data['user'] = request.user
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        """
+        Update an existing UserProfile instance.
+        
+        Allows updating bio, profile_picture, and social_links.
+        """
+        instance.bio = validated_data.get('bio', instance.bio)
+        instance.profile_picture = validated_data.get('profile_picture', instance.profile_picture)
+        instance.social_links = validated_data.get('social_links', instance.social_links)
+        instance.save()
+        return instance
