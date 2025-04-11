@@ -1,6 +1,8 @@
+from core.models import CustomUser as User
+
 from rest_framework import serializers
 
-from community.models import ForumPost, Comment
+from community.models import ForumPost, Comment, Challenge
 
 
 
@@ -63,3 +65,60 @@ class CommentSerializer(serializers.ModelSerializer):
         if request and not validated_data.get('user'):
             validated_data['user'] = request.user
         return super().create(validated_data)
+
+
+
+class ChallengeSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Challenge model where users can compete with each other.
+    """
+    # Allow participants to be provided as a list of primary keys, but make it optional.
+    participants = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(),
+        many=True,
+        required=False
+    )
+    
+    class Meta:
+        model = Challenge
+        fields = (
+            'id', 'name', 'description', 'start_date', 'end_date',
+            'participants', 'created_at', 'is_active'
+        )
+        read_only_fields = ('id', 'created_at',)
+    
+    def validate(self, data):
+        """
+        Ensure that the end_date is after the start_date.
+        """
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+        if start_date and end_date and end_date < start_date:
+            raise serializers.ValidationError("End date cannot be earlier than start date.")
+        return data
+
+    def create(self, validated_data):
+        """
+        Create a new Challenge instance and set the many-to-many participants if provided.
+        """
+        participants = validated_data.pop('participants', [])
+        challenge = Challenge.objects.create(**validated_data)
+        if participants:
+            challenge.participants.set(participants)
+        return challenge
+
+    def update(self, instance, validated_data):
+        """
+        Update an existing Challenge instance. Handles updating of the many-to-many field separately.
+        """
+        participants = validated_data.pop('participants', None)
+        
+        # Update simple fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Update the participants if provided
+        if participants is not None:
+            instance.participants.set(participants)
+        return instance
