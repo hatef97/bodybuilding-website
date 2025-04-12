@@ -11,6 +11,8 @@ class ForumPostSerializer(serializers.ModelSerializer):
     """
     Serializer for the ForumPost model representing a forum discussion post.
     """
+    title = serializers.CharField(allow_blank=True, trim_whitespace=False)
+
     class Meta:
         model = ForumPost
         fields = ('id', 'user', 'title', 'content', 'created_at', 'updated_at', 'is_active')
