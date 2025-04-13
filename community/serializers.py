@@ -44,6 +44,7 @@ class CommentSerializer(serializers.ModelSerializer):
     """
     Serializer for the Comment model representing a comment on a forum post.
     """
+    content = serializers.CharField(allow_blank=True, trim_whitespace=False)
     class Meta:
         model = Comment
         fields = ('id', 'user', 'post', 'content', 'created_at', 'is_active')

@@ -3,8 +3,8 @@ from django.utils import timezone
 
 from rest_framework.test import APIRequestFactory
 
-from community.models import ForumPost
-from community.serializers import ForumPostSerializer
+from community.models import *
+from community.serializers import *
 from core.models import CustomUser as User
 
 
@@ -88,5 +88,98 @@ class ForumPostSerializerTests(TestCase):
         serializer = ForumPostSerializer(forum_post, context={"request": self.request})
         data = serializer.data
         expected_fields = ["id", "user", "title", "content", "created_at", "updated_at", "is_active"]
+        for field in expected_fields:
+            self.assertIn(field, data)
+
+
+
+class CommentSerializerTests(TestCase):
+
+    def setUp(self):
+        # Create a test user and forum post for the tests.
+        self.user = User.objects.create_user(
+            email="user@test.com", username="testuser", password="password"
+        )
+        self.forum_post = ForumPost.objects.create(
+            user=self.user,
+            title="Test Post",
+            content="Content of the test post.",
+            created_at=timezone.now(),
+            updated_at=timezone.now(),
+            is_active=True
+        )
+        # Build a request using DRF's APIRequestFactory and attach our test user.
+        self.factory = APIRequestFactory()
+        self.request = self.factory.post('/comments/')
+        self.request.user = self.user
+        
+        # Valid data (excluding 'user' which should be automatically assigned).
+        self.valid_data = {
+            "post": self.forum_post.id,  # Assuming the field expects a primary key.
+            "content": "This is a test comment."
+        }
+
+
+    def test_validate_content_blank(self):
+        """
+        Test that a comment with content consisting solely of whitespace is rejected.
+        Expected error: "Comment content cannot be empty."
+        """
+        invalid_data = self.valid_data.copy()
+        invalid_data["content"] = "    "  # Only whitespace
+        serializer = CommentSerializer(data=invalid_data, context={"request": self.request})
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("content", serializer.errors)
+        self.assertEqual(serializer.errors["content"][0], "Comment content cannot be empty.")
+
+
+    def test_create_comment_assigns_request_user(self):
+        """
+        Test that when no user is provided in the input, the serializer automatically assigns
+        the request.user to the Comment instance.
+        """
+        serializer = CommentSerializer(data=self.valid_data, context={"request": self.request})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        comment = serializer.save()
+        self.assertEqual(comment.user, self.user)
+        self.assertEqual(comment.post, self.forum_post)
+        self.assertEqual(comment.content, self.valid_data["content"])
+
+
+    def test_create_comment_with_explicit_user(self):
+        """
+        Test that if the validated_data already includes a user, the create() method retains that user.
+        (Note: The user field is read-only in serializer input but may be set programmatically.)
+        """
+        explicit_user = User.objects.create_user(
+            email="explicit@test.com", username="explicituser", password="password456"
+        )
+        # Build validated_data with "post" as a ForumPost instance.
+        validated_data = {
+            "post": self.forum_post,
+            "content": "This is a test comment.",
+            "user": explicit_user
+        }
+        comment = CommentSerializer().create(validated_data)
+        self.assertEqual(comment.user, explicit_user)
+        self.assertEqual(comment.post, self.forum_post)
+        self.assertEqual(comment.content, "This is a test comment.")
+
+
+    def test_serializer_output_fields(self):
+        """
+        Test that the serializer output contains all the expected fields.
+        """
+        # Directly create a Comment instance.
+        comment = Comment.objects.create(
+            user=self.user,
+            post=self.forum_post,
+            content=self.valid_data["content"],
+            created_at=timezone.now(),
+            is_active=True
+        )
+        serializer = CommentSerializer(comment, context={"request": self.request})
+        data = serializer.data
+        expected_fields = ["id", "user", "post", "content", "created_at", "is_active"]
         for field in expected_fields:
             self.assertIn(field, data)
