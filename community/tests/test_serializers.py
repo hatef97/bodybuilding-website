@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.test import TestCase
 from django.utils import timezone
 
@@ -183,3 +185,139 @@ class CommentSerializerTests(TestCase):
         expected_fields = ["id", "user", "post", "content", "created_at", "is_active"]
         for field in expected_fields:
             self.assertIn(field, data)
+
+
+
+class ChallengeSerializerTests(TestCase):
+    
+    def setUp(self):
+        # Create test users.
+        self.user1 = User.objects.create_user(
+            email="user1@test.com", username="user1", password="password123"
+        )
+        self.user2 = User.objects.create_user(
+            email="user2@test.com", username="user2", password="password456"
+        )
+        
+        # Prepare valid challenge data.
+        self.start_date = timezone.now() + timedelta(days=1)
+        self.end_date = self.start_date + timedelta(days=2)
+        self.valid_data = {
+            "name": "Test Challenge",
+            "description": "This is a test challenge description.",
+            "start_date": self.start_date,
+            "end_date": self.end_date,
+            "is_active": True,
+            # 'participants' is optional.
+        }
+    
+
+    def test_validate_end_date_after_start_date(self):
+        """
+        Test that the serializer validation fails if end_date is earlier than start_date.
+        """
+        invalid_data = self.valid_data.copy()
+        # Set end_date to before start_date.
+        invalid_data["end_date"] = self.start_date - timedelta(hours=1)
+        serializer = ChallengeSerializer(data=invalid_data)
+        self.assertFalse(serializer.is_valid())
+        # The error is raised as a non-field error.
+        self.assertIn("non_field_errors", serializer.errors)
+        self.assertEqual(
+            serializer.errors["non_field_errors"][0],
+            "End date cannot be earlier than start date."
+        )
+    
+
+    def test_create_challenge_without_participants(self):
+        """
+        Test that a challenge can be created without providing participants.
+        """
+        serializer = ChallengeSerializer(data=self.valid_data)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        challenge = serializer.save()
+        # Verify regular fields.
+        self.assertEqual(challenge.name, self.valid_data["name"])
+        self.assertEqual(challenge.description, self.valid_data["description"])
+        self.assertEqual(challenge.start_date, self.valid_data["start_date"])
+        self.assertEqual(challenge.end_date, self.valid_data["end_date"])
+        self.assertTrue(challenge.is_active)
+        # No participants should be associated.
+        self.assertEqual(challenge.participants.count(), 0)
+    
+
+    def test_create_challenge_with_participants(self):
+        """
+        Test that a challenge can be created when a list of participant user IDs is provided.
+        """
+        valid_data_with_participants = self.valid_data.copy()
+        # Provide participants as a list of primary keys.
+        valid_data_with_participants["participants"] = [self.user1.pk, self.user2.pk]
+        serializer = ChallengeSerializer(data=valid_data_with_participants)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        challenge = serializer.save()
+        # Check that both users have been added to the many-to-many field.
+        participants = challenge.participants.all()
+        self.assertEqual(participants.count(), 2)
+        self.assertIn(self.user1, participants)
+        self.assertIn(self.user2, participants)
+    
+
+    def test_update_challenge_fields(self):
+        """
+        Test that updating a challenge instance updates its fields correctly.
+        """
+        # First, create a challenge without participants.
+        serializer = ChallengeSerializer(data=self.valid_data)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        challenge = serializer.save()
+        
+        # Prepare data for updating the challenge.
+        new_start_date = self.start_date + timedelta(days=3)
+        new_end_date = new_start_date + timedelta(days=2)
+        update_data = {
+            "name": "Updated Challenge Name",
+            "description": "Updated description.",
+            "start_date": new_start_date,
+            "end_date": new_end_date,
+            "is_active": False,
+            # Update participants as well.
+            "participants": [self.user2.pk],
+        }
+        updated_challenge = ChallengeSerializer().update(challenge, update_data)
+        self.assertEqual(updated_challenge.name, update_data["name"])
+        self.assertEqual(updated_challenge.description, update_data["description"])
+        self.assertEqual(updated_challenge.start_date, new_start_date)
+        self.assertEqual(updated_challenge.end_date, new_end_date)
+        self.assertFalse(updated_challenge.is_active)
+        # Check that participants have been updated.
+        participants = updated_challenge.participants.all()
+        self.assertEqual(participants.count(), 1)
+        self.assertIn(self.user2, participants)
+    
+
+    def test_serializer_output_fields(self):
+        """
+        Test that the serialized output of a challenge includes all expected fields.
+        """
+        # Create a challenge with participants.
+        challenge = Challenge.objects.create(
+            name=self.valid_data["name"],
+            description=self.valid_data["description"],
+            start_date=self.valid_data["start_date"],
+            end_date=self.valid_data["end_date"],
+            is_active=self.valid_data["is_active"]
+        )
+        challenge.participants.set([self.user1.pk, self.user2.pk])
+        
+        serializer = ChallengeSerializer(challenge)
+        data = serializer.data
+        
+        expected_fields = [
+            "id", "name", "description", "start_date", "end_date", 
+            "participants", "created_at", "is_active"
+        ]
+        for field in expected_fields:
+            self.assertIn(field, data)
+        # Check that participants are returned as a list of IDs.
+        self.assertEqual(set(data["participants"]), set([self.user1.pk, self.user2.pk]))
