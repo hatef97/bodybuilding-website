@@ -189,7 +189,7 @@ class CommentSerializerTests(TestCase):
 
 
 class ChallengeSerializerTests(TestCase):
-    
+
     def setUp(self):
         # Create test users.
         self.user1 = User.objects.create_user(
@@ -321,3 +321,115 @@ class ChallengeSerializerTests(TestCase):
             self.assertIn(field, data)
         # Check that participants are returned as a list of IDs.
         self.assertEqual(set(data["participants"]), set([self.user1.pk, self.user2.pk]))
+
+
+
+class LeaderboardSerializerTests(TestCase):
+    def setUp(self):
+        # Create two test users.
+        self.user1 = User.objects.create_user(
+            email="user1@test.com", username="user1", password="password123"
+        )
+        self.user2 = User.objects.create_user(
+            email="user2@test.com", username="user2", password="password456"
+        )
+        # Create a test challenge.
+        self.challenge = Challenge.objects.create(
+            name="Test Challenge",
+            description="A challenge for testing purposes.",
+            start_date=timezone.now() + timedelta(days=1),
+            end_date=timezone.now() + timedelta(days=2),
+            is_active=True
+        )
+        # Prepare valid input data.
+        # For serializer input, the challenge is supplied as its primary key.
+        self.valid_data = {
+            "challenge": self.challenge.pk,
+            "score": 100
+        }
+        # Set up the request with user1 attached for serializer context.
+        self.factory = APIRequestFactory()
+        self.request = self.factory.post('/leaderboards/')
+        self.request.user = self.user1
+
+    def test_validate_score_negative(self):
+        """
+        Test that a score of 0 or below is rejected.
+        Since the score field is a PositiveIntegerField, the built-in validator returns
+        an error containing "greater than or equal".
+        """
+        data = self.valid_data.copy()
+        data["score"] = -10  # Negative score to trigger validation error.
+        # Use partial=True to bypass the missing 'user' requirement.
+        serializer = LeaderboardSerializer(
+            data=data, context={"request": self.request}, partial=True
+        )
+        self.assertFalse(serializer.is_valid(), serializer.errors)
+        self.assertIn("score", serializer.errors)
+        self.assertIn("greater than or equal", serializer.errors["score"][0])
+
+    def test_create_leaderboard_assigns_request_user(self):
+        """
+        Test that when no user is provided in the input,
+        the serializer automatically assigns request.user to the Leaderboard entry.
+        """
+        # Use partial=True so that the missing "user" field does not trigger a validation error.
+        serializer = LeaderboardSerializer(
+            data=self.valid_data,
+            context={"request": self.request},
+            partial=True
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        leaderboard = serializer.save()
+        self.assertEqual(leaderboard.user, self.user1)
+        self.assertEqual(leaderboard.challenge, self.challenge)
+        self.assertEqual(leaderboard.score, 100)
+
+    def test_create_leaderboard_with_explicit_user(self):
+        """
+        Test that if validated_data already includes a user,
+        the serializer retains that user rather than assigning request.user.
+        
+        Note: We simulate this by directly calling create() with pre-populated validated_data.
+        Also, we convert the challenge field from its primary key to the actual Challenge instance.
+        """
+        validated_data = self.valid_data.copy()
+        validated_data["challenge"] = self.challenge  # Convert pk to instance.
+        validated_data["user"] = self.user2  # Provide an explicit user.
+        leaderboard = LeaderboardSerializer().create(validated_data)
+        self.assertEqual(leaderboard.user, self.user2)
+        self.assertEqual(leaderboard.challenge, self.challenge)
+        self.assertEqual(leaderboard.score, 100)
+
+    def test_unique_together_validator(self):
+        """
+        Test that the unique-together constraint prevents duplicate leaderboard entries
+        for the same challenge and user.
+        """
+        # Create an initial leaderboard entry.
+        Leaderboard.objects.create(challenge=self.challenge, user=self.user1, score=100)
+        data = self.valid_data.copy()
+        # Using partial=True so that missing 'user' is not flagged; the serializer later assigns request.user.
+        serializer = LeaderboardSerializer(
+            data=data,
+            context={"request": self.request},
+            partial=True
+        )
+        self.assertFalse(serializer.is_valid())
+        # The unique-together error should appear as a non-field error.
+        self.assertIn("non_field_errors", serializer.errors)
+        self.assertEqual(
+            serializer.errors["non_field_errors"][0],
+            "Each user can have only one leaderboard entry per challenge."
+        )
+
+    def test_serializer_output_fields(self):
+        """
+        Test that the serialized output of a Leaderboard instance contains all expected fields.
+        """
+        leaderboard = Leaderboard.objects.create(challenge=self.challenge, user=self.user1, score=150)
+        serializer = LeaderboardSerializer(leaderboard, context={"request": self.request})
+        data = serializer.data
+        expected_fields = ["id", "challenge", "user", "score"]
+        for field in expected_fields:
+            self.assertIn(field, data)
