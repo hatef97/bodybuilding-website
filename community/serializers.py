@@ -2,6 +2,7 @@ from core.models import CustomUser as User
 
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
+from rest_framework.fields import HiddenField, CurrentUserDefault
 
 from community.models import ForumPost, Comment, Challenge, Leaderboard, UserProfile
 
@@ -45,6 +46,7 @@ class CommentSerializer(serializers.ModelSerializer):
     Serializer for the Comment model representing a comment on a forum post.
     """
     content = serializers.CharField(allow_blank=True, trim_whitespace=False)
+    
     class Meta:
         model = Comment
         fields = ('id', 'user', 'post', 'content', 'created_at', 'is_active')
@@ -134,10 +136,12 @@ class LeaderboardSerializer(serializers.ModelSerializer):
     Serializer for the Leaderboard model, which stores scores associated with a user's participation
     in a challenge.
     """
+    user = HiddenField(default=CurrentUserDefault())
+         
     class Meta:
         model = Leaderboard
         fields = ('id', 'challenge', 'user', 'score')
-        read_only_fields = ('id',)
+        read_only_fields = ('id', 'user')
         validators = [
             UniqueTogetherValidator(
                 queryset=Leaderboard.objects.all(),
@@ -165,6 +169,14 @@ class LeaderboardSerializer(serializers.ModelSerializer):
         if request and not validated_data.get('user'):
             validated_data['user'] = request.user
         return super().create(validated_data)
+    
+    def to_representation(self, instance):
+        """
+        Add 'user' to the serialized output even though it's read-only.
+        """
+        representation = super().to_representation(instance)
+        representation['user'] = instance.user.username  # Add user field to the output
+        return representation
 
 
 
