@@ -190,6 +190,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
     """
     Serializer for the UserProfile model that stores additional information about a user.
     """
+    user = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), required=False)
+
     class Meta:
         model = UserProfile
         fields = ('id', 'user', 'bio', 'profile_picture', 'social_links', 'created_at')
@@ -218,3 +220,12 @@ class UserProfileSerializer(serializers.ModelSerializer):
         instance.social_links = validated_data.get('social_links', instance.social_links)
         instance.save()
         return instance
+
+    # Custom validation for social_links field
+    def validate_social_links(self, value):
+        """
+        Ensure that the social_links field is a dictionary.
+        """
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Social links must be a dictionary.")
+        return value

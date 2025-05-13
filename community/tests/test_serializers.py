@@ -1,7 +1,11 @@
 from datetime import timedelta
+from io import BytesIO
+from PIL import Image
 
 from django.test import TestCase
 from django.utils import timezone
+from django.core.files.uploadedfile import InMemoryUploadedFile
+from django.core.files.storage import default_storage
 
 from rest_framework.test import APIRequestFactory
 
@@ -325,7 +329,7 @@ class ChallengeSerializerTests(TestCase):
 
 
 class LeaderboardSerializerTests(TestCase):
-    
+
     def setUp(self):
         # Create test users.
         self.user1 = User.objects.create_user(
@@ -418,3 +422,184 @@ class LeaderboardSerializerTests(TestCase):
         expected_fields = ["id", "challenge", "user", "score"]
         for field in expected_fields:
             self.assertIn(field, data)
+
+
+
+class UserProfileSerializerTests(TestCase):
+
+    def setUp(self):
+        # Create a user for testing
+        self.user = User.objects.create_user(
+            username='testuser', password='password123', email='testuser@example.com'
+        )
+
+        self.profile = UserProfile.objects.create(user=self.user, bio='Old bio', social_links={})
+
+        # The data that will be used for testing
+        self.valid_data = {
+            'user': self.user.id,
+            'bio': 'This is my bio.',
+            'social_links': {'facebook': 'facebook.com/testuser', 'twitter': 'twitter.com/testuser'}
+        }
+
+
+    # Test: Test creating a UserProfile from valid data
+    def test_create_user_profile(self):
+        # Ensure any existing UserProfile is deleted
+        UserProfile.objects.filter(user=self.user).delete()
+                
+        self.client.force_login(self.user)  # Simulate login
+        
+        data = {
+            'bio': 'This is my bio.',
+            'social_links': {'facebook': 'facebook.com/testuser', 'twitter': 'twitter.com/testuser'}
+        }
+
+        # Create a request object using APIRequestFactory
+        factory = APIRequestFactory()
+        request = factory.post('/user_profiles/', data, format='json')  # Ensure format='json'
+        request.user = self.user  # Attach the logged-in user to the request
+        
+        # Now pass the request to the context of the serializer
+        serializer = UserProfileSerializer(data=data, context={'request': request})
+        
+        self.assertTrue(serializer.is_valid())  # Validate the data
+        
+        # Save the validated data and create the profile
+        profile = serializer.save()  
+        
+        # Assert that the profile is created with the correct user
+        self.assertEqual(profile.user, self.user)
+        self.assertEqual(profile.bio, 'This is my bio.')
+        self.assertEqual(profile.social_links, {'facebook': 'facebook.com/testuser', 'twitter': 'twitter.com/testuser'})
+
+
+    # Test: Test creating UserProfile when user is not provided in the data
+    def test_create_user_profile_without_user(self):
+        # Ensure any existing UserProfile is deleted
+        UserProfile.objects.filter(user=self.user).delete()
+
+        # Remove the 'user' field from the data
+        invalid_data = self.valid_data.copy()
+        invalid_data.pop('user')
+        
+        # Create an APIRequestFactory to simulate the request
+        factory = APIRequestFactory()
+        request = factory.post('/user_profiles/', invalid_data, format='json')  # Simulate the POST request
+        request.user = self.user  # Attach the logged-in user to the request
+        
+        # Now pass the request to the context of the serializer
+        serializer = UserProfileSerializer(data=invalid_data, context={'request': request})
+        
+        # Check that serializer is valid
+        self.assertTrue(serializer.is_valid())
+        profile = serializer.save()
+
+        # Assert the user field is correctly assigned from the request context
+        self.assertEqual(profile.user, self.user)
+
+
+    # Test: Test updating a UserProfile (update fields)
+    def test_update_user_profile(self):
+        serializer = UserProfileSerializer(instance=self.profile, data={'bio': 'Updated bio', 'social_links': {'facebook': 'newlink.com'}}, partial=True)
+        
+        self.assertTrue(serializer.is_valid())  # Validate serializer
+        updated_profile = serializer.save()  # Save the updated profile
+        
+        # Assert that the bio and social links were updated
+        self.assertEqual(updated_profile.bio, 'Updated bio')
+        self.assertEqual(updated_profile.social_links, {'facebook': 'newlink.com'})
+
+
+    # Test: Test partial update of UserProfile
+    def test_partial_update_user_profile(self):
+        # Only update the bio (partial update)
+        serializer = UserProfileSerializer(instance=self.profile, data={'bio': 'Partially updated bio'}, partial=True)
+        
+        self.assertTrue(serializer.is_valid())  # Validate serializer
+        updated_profile = serializer.save()  # Save the updated profile
+        
+        # Assert that only the bio was updated
+        self.assertEqual(updated_profile.bio, 'Partially updated bio')
+        self.assertEqual(updated_profile.social_links, {})  # Ensure social_links remain unchanged
+
+
+    # Test: Test invalid data (e.g., invalid user field)
+    def test_invalid_user_field(self):
+        # Test with an invalid user ID (string instead of a valid user ID)
+        invalid_data = self.valid_data.copy()
+        invalid_data['user'] = 'invalid_user_id'  # Invalid user (should be an integer ID)
+
+        serializer = UserProfileSerializer(data=invalid_data)
+        
+        # Check that the serializer is not valid because of the invalid 'user' field
+        self.assertFalse(serializer.is_valid())  # Should fail validation
+
+        # Assert that 'user' field has an error
+        self.assertIn('user', serializer.errors)  # Check that the 'user' field is present in errors
+
+        # Check if the error message is related to the invalid user
+        self.assertEqual(str(serializer.errors['user'][0]), 'Incorrect type. Expected pk value, received str.')
+
+
+    # Test: Test invalid data for 'social_links' field (e.g., missing required format)
+    def test_invalid_social_links(self):
+        invalid_data = self.valid_data.copy()
+        invalid_data['social_links'] = 'invalid_social_links'  # Invalid format (should be a dict)
+        
+        serializer = UserProfileSerializer(data=invalid_data)
+        
+        # Check that the serializer is invalid
+        self.assertFalse(serializer.is_valid())  # Check if it's invalid
+        
+        # Assert that the social_links field has an error
+        self.assertIn('social_links', serializer.errors)  # Check that the 'social_links' field is in errors
+        
+        # Check if the error message is the one defined in the validation
+        self.assertEqual(str(serializer.errors['social_links'][0]), "Social links must be a dictionary.")
+
+
+    # Test: Test the profile picture (no image provided)
+    def test_profile_picture_not_provided(self):
+        serializer = UserProfileSerializer(instance=self.profile, data={'bio': 'New bio without picture'}, partial=True)
+        
+        self.assertTrue(serializer.is_valid())  # Ensure the serializer is valid
+        updated_profile = serializer.save()
+        
+        # Ensure the profile picture field is None or empty (no image provided)
+        self.assertEqual(updated_profile.profile_picture.name, None)  # Check if the profile picture is empty or not set
+
+
+    # Test: Test the profile picture (image provided)
+    def test_profile_picture_uploaded(self):
+        # Ensure any existing UserProfile is deleted
+        UserProfile.objects.filter(user=self.user).delete()
+        
+        # Create a valid image in memory using Pillow
+        image = Image.new('RGB', (100, 100), color='red')
+        image_file = BytesIO()
+        image.save(image_file, format='JPEG')
+        image_file.seek(0)
+        
+        # Create the InMemoryUploadedFile from the image
+        image_uploaded_file = InMemoryUploadedFile(image_file, None, 'profile_pic.jpg', 'image/jpeg', len(image_file.getvalue()), None)
+        
+        data_with_picture = self.valid_data.copy()
+        data_with_picture['profile_picture'] = image_uploaded_file  # Add image to the data
+        
+        # Create the serializer with the image data
+        serializer = UserProfileSerializer(data=data_with_picture)
+        
+        self.assertTrue(serializer.is_valid(), serializer.errors)  # Validate serializer
+        
+        # Save the profile and return the updated profile
+        profile_with_picture = serializer.save()  
+        
+        # Assert that the profile picture is correctly set
+        self.assertIsNotNone(profile_with_picture.profile_picture)  # Ensure profile picture is not None
+        
+        # Get the actual file path from the default storage system
+        file_path = profile_with_picture.profile_picture.name
+        
+        # Assert that the file name is correct (it may have a directory path prefix depending on your storage system)
+        self.assertTrue(file_path.endswith('profile_pic.jpg'), f"Expected file path to end with 'profile_pic.jpg', got {file_path}")

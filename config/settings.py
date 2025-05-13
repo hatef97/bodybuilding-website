@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 from pathlib import Path
 from dotenv import load_dotenv
 
+import tempfile
 import os
 
 
@@ -166,3 +167,7 @@ DJOSER = {
 INTERNAL_IPS = [
     "127.0.0.1",  # local IP address
 ]
+
+# Use a temporary directory for media files during tests
+MEDIA_ROOT = tempfile.mkdtemp()
+MEDIA_URL = '/media/'
