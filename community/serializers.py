@@ -136,8 +136,8 @@ class LeaderboardSerializer(serializers.ModelSerializer):
     Serializer for the Leaderboard model, which stores scores associated with a user's participation
     in a challenge.
     """
-    user = HiddenField(default=CurrentUserDefault())
-         
+    user = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), required=False)
+
     class Meta:
         model = Leaderboard
         fields = ('id', 'challenge', 'user', 'score')
@@ -166,8 +166,14 @@ class LeaderboardSerializer(serializers.ModelSerializer):
         automatically assign the request.user to the leaderboard entry.
         """
         request = self.context.get('request')
-        if request and not validated_data.get('user'):
-            validated_data['user'] = request.user
+        
+        # Ensure the user is assigned if not provided
+        if 'user' not in validated_data:
+            if request and request.user:
+                validated_data['user'] = request.user
+            else:
+                raise serializers.ValidationError({'user': 'User is required but was not provided.'})
+
         return super().create(validated_data)
     
     def to_representation(self, instance):

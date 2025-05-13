@@ -325,6 +325,7 @@ class ChallengeSerializerTests(TestCase):
 
 
 class LeaderboardSerializerTests(TestCase):
+    
     def setUp(self):
         # Create test users.
         self.user1 = User.objects.create_user(
@@ -353,6 +354,7 @@ class LeaderboardSerializerTests(TestCase):
         self.request = self.factory.post('/leaderboards/')
         self.request.user = self.user1
 
+
     def test_validate_score_negative(self):
         data = self.valid_data.copy()
         data["score"] = -10  # Negative score to trigger validation error.
@@ -361,13 +363,24 @@ class LeaderboardSerializerTests(TestCase):
         self.assertIn("score", serializer.errors)
         self.assertIn("greater than or equal", serializer.errors["score"][0])
 
+
     def test_create_leaderboard_assigns_request_user(self):
-        serializer = LeaderboardSerializer(data=self.valid_data, context={"request": self.request}, partial=True)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
+        # Explicitly pass the user id (primary key) instead of the user instance
+        valid_data_with_user = self.valid_data.copy()
+        valid_data_with_user['user'] = self.user1.id  # Pass the user ID (primary key)
+        
+        serializer = LeaderboardSerializer(data=valid_data_with_user, context={"request": self.request}, partial=True)
+        
+        is_valid = serializer.is_valid()
+
+        self.assertTrue(is_valid, serializer.errors)  # Validate the data
         leaderboard = serializer.save()
+        
+        # Assert that the user is assigned correctly
         self.assertEqual(leaderboard.user, self.user1)  # Ensure user1 is assigned
         self.assertEqual(leaderboard.challenge, self.challenge)
         self.assertEqual(leaderboard.score, 100)
+
 
     def test_create_leaderboard_with_explicit_user(self):
         validated_data = self.valid_data.copy()
@@ -378,21 +391,25 @@ class LeaderboardSerializerTests(TestCase):
         self.assertEqual(leaderboard.challenge, self.challenge)
         self.assertEqual(leaderboard.score, 100)
 
+
     def test_unique_together_validator(self):
         # Create an initial leaderboard entry.
         Leaderboard.objects.create(challenge=self.challenge, user=self.user1, score=100)
-        # Prepare data for the second leaderboard entry
+        
+        # Prepare data for the second leaderboard entry with the same user and challenge.
         data = self.valid_data.copy()
-        # Use partial=True so that missing 'user' is not flagged; the serializer later assigns request.user.
+        data["user"] = self.user1.id  
+        
         serializer = LeaderboardSerializer(data=data, context={"request": self.request}, partial=True)
-        # Check that the serializer is not valid due to the unique-together constraint violation
-        self.assertFalse(serializer.is_valid())
-        # The unique-together error should appear as a non-field error.
-        self.assertIn("non_field_errors", serializer.errors)
+        
+        # Check that the serializer is not valid due to the unique-together constraint violation.
+        self.assertFalse(serializer.is_valid(), serializer.errors)
+        self.assertIn("non_field_errors", serializer.errors)  
         self.assertEqual(
             serializer.errors["non_field_errors"][0],
             "Each user can have only one leaderboard entry per challenge."
         )
+
 
     def test_serializer_output_fields(self):
         leaderboard = Leaderboard.objects.create(challenge=self.challenge, user=self.user1, score=150)
