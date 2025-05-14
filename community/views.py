@@ -3,9 +3,19 @@ from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.pagination import PageNumberPagination
+from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 
 from community.models import ForumPost
 from .serializers import ForumPostSerializer
+
+
+
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 10  
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 
 
@@ -14,6 +24,7 @@ class ForumPostViewSet(viewsets.ModelViewSet):
     A viewset for viewing, creating, updating, and deleting forum posts.
     """
     serializer_class = ForumPostSerializer
+    pagination_class = StandardResultsSetPagination
     permission_classes = [IsAuthenticatedOrReadOnly]  # Allows authenticated users to perform any action; others can only read.
 
     def perform_create(self, serializer):
@@ -30,15 +41,21 @@ class ForumPostViewSet(viewsets.ModelViewSet):
         """
         queryset = ForumPost.objects.all()
 
-        # Example of filtering by whether the post is active
+        # Get the 'is_active' query parameter
         is_active = self.request.query_params.get('is_active', None)
+
         if is_active is not None:
-            # Ensure is_active is a valid boolean
-            try:
-                is_active = bool(int(is_active))  # Convert to boolean
-                queryset = queryset.filter(is_active=is_active)
-            except ValueError:
-                raise serializers.ValidationError("is_active must be a valid boolean (1 or 0).")
+            # Handle valid 'true', 'false', '1', '0' values
+            if is_active.lower() in ['true', '1']:
+                is_active = True
+            elif is_active.lower() in ['false', '0']:
+                is_active = False
+            else:
+                # If it's an invalid value, raise a ValidationError
+                raise ValidationError("is_active must be a valid boolean (1 or 0, or 'true'/'false').")
+            
+            # If valid, filter the posts by 'is_active' value
+            queryset = queryset.filter(is_active=is_active)
 
         return queryset
 

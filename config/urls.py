@@ -25,6 +25,7 @@ urlpatterns = [
     path('workout/', include('workouts.urls')),  # Include workout-related API URLs
     path('nutrition/', include('nutrition.urls')),  # Include nutrion-related API URLs
     path('progress/', include('progress.urls')),    # Include progress-related API URLs
+    path('community/', include('community.urls')),    # Include community-related API URLs
 ]
 
 
