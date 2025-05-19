@@ -6,8 +6,8 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
-from community.models import ForumPost, Comment
-from .serializers import ForumPostSerializer, CommentSerializer
+from community.models import ForumPost, Comment, Challenge
+from .serializers import ForumPostSerializer, CommentSerializer, ChallengeSerializer
 
 
 
@@ -125,3 +125,73 @@ class CommentViewSet(viewsets.ModelViewSet):
             },
             status=status.HTTP_200_OK
         )
+
+
+
+class ChallengeViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing Challenges where users can compete.
+    Includes full CRUD operations and custom join/leave actions.
+    """
+    serializer_class = ChallengeSerializer
+    pagination_class = StandardResultsSetPagination
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def get_queryset(self):
+        """
+        Optionally filter challenges by:
+        - is_active=true/false
+        - upcoming (start_date > now)
+        - past (end_date < now)
+        """
+        queryset = Challenge.objects.all()
+        params = self.request.query_params
+
+        is_active = params.get('is_active')
+        if is_active is not None:
+            if is_active.lower() in ['true', '1']:
+                queryset = queryset.filter(is_active=True)
+            elif is_active.lower() in ['false', '0']:
+                queryset = queryset.filter(is_active=False)
+            else:
+                raise ValidationError("`is_active` must be true/false or 1/0.")
+
+        filter_type = params.get('filter')
+        if filter_type == 'upcoming':
+            queryset = queryset.filter(start_date__gt=timezone.now())
+        elif filter_type == 'past':
+            queryset = queryset.filter(end_date__lt=timezone.now())
+
+        return queryset
+
+    def perform_create(self, serializer):
+        """
+        Optionally add the current user to the participants if not provided.
+        """
+        challenge = serializer.save()
+        if self.request.user.is_authenticated and self.request.user not in challenge.participants.all():
+            challenge.participants.add(self.request.user)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticatedOrReadOnly])
+    def join(self, request, pk=None):
+        """
+        Custom action: Add current user to the challenge participants.
+        """
+        challenge = self.get_object()
+        user = request.user
+        if user in challenge.participants.all():
+            return Response({"detail": "Already joined."}, status=status.HTTP_400_BAD_REQUEST)
+        challenge.participants.add(user)
+        return Response({"detail": "Successfully joined the challenge."}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticatedOrReadOnly])
+    def leave(self, request, pk=None):
+        """
+        Custom action: Remove current user from the challenge participants.
+        """
+        challenge = self.get_object()
+        user = request.user
+        if user not in challenge.participants.all():
+            return Response({"detail": "You are not a participant."}, status=status.HTTP_400_BAD_REQUEST)
+        challenge.participants.remove(user)
+        return Response({"detail": "Successfully left the challenge."}, status=status.HTTP_200_OK)
