@@ -1,10 +1,13 @@
+from datetime import timedelta
+
 from rest_framework.test import APIClient
 from rest_framework import status
 
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
-from community.models import ForumPost, Comment
+from community.models import ForumPost, Comment, Challenge
 from core.models import CustomUser as User
 
 
@@ -263,3 +266,154 @@ class CommentViewSetTests(TestCase):
         "`is_active` must be a valid boolean value: true/false or 1/0.",
         str(response.data)
         )   
+
+
+
+class ChallengeViewSetTests(TestCase):
+
+    def setUp(self):
+        Challenge.objects.all().delete()
+
+        self.user = User.objects.create_user(username='tester', password='pass123', email='tester@test.com')
+        self.other_user = User.objects.create_user(username='other', password='pass456', email='other@test.com')
+
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+        self.now = timezone.now()
+        self.challenge = Challenge.objects.create(
+            name="Test Challenge",
+            description="A challenge for testing",
+            start_date=self.now + timedelta(days=1),
+            end_date=self.now + timedelta(days=10),
+            is_active=True
+        )
+        self.challenge.participants.add(self.user)
+
+        self.url = reverse('challenge-list')
+        self.detail_url = reverse('challenge-detail', args=[self.challenge.id])
+        self.join_url = reverse('challenge-join', args=[self.challenge.id])
+        self.leave_url = reverse('challenge-leave', args=[self.challenge.id])
+
+
+    def test_list_challenges(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 1)
+
+
+    def test_retrieve_challenge(self):
+        response = self.client.get(self.detail_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['id'], self.challenge.id)
+
+
+    def test_create_challenge(self):
+        data = {
+            "name": "New Challenge",
+            "description": "Something cool",
+            "start_date": (self.now + timedelta(days=2)).isoformat(),
+            "end_date": (self.now + timedelta(days=5)).isoformat(),
+            "is_active": True
+        }
+        response = self.client.post(self.url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['name'], "New Challenge")
+
+
+    def test_create_invalid_date_range(self):
+        data = {
+            "name": "Invalid Dates",
+            "description": "Bad range",
+            "start_date": (self.now + timedelta(days=5)).isoformat(),
+            "end_date": (self.now + timedelta(days=2)).isoformat(),
+        }
+        response = self.client.post(self.url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("End date cannot be earlier", str(response.data))
+
+
+    def test_update_challenge(self):
+        data = {
+            "name": "Updated Name",
+            "description": self.challenge.description,
+            "start_date": self.challenge.start_date,
+            "end_date": self.challenge.end_date,
+            "is_active": False
+        }
+        response = self.client.put(self.detail_url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['name'], "Updated Name")
+        self.assertFalse(response.data['is_active'])
+
+
+    def test_delete_challenge(self):
+        response = self.client.delete(self.detail_url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Challenge.objects.filter(id=self.challenge.id).exists())
+
+
+    def test_filter_is_active(self):
+        Challenge.objects.create(
+            name="Inactive Challenge",
+            description="Off",
+            start_date=self.now,
+            end_date=self.now + timedelta(days=3),
+            is_active=False
+        )
+        response = self.client.get(self.url, {'is_active': 'true'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 1)
+        self.assertTrue(all(c['is_active'] for c in response.data['results']))
+
+        response = self.client.get(self.url, {'is_active': 'false'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 1)
+        self.assertTrue(all(not c['is_active'] for c in response.data['results']))
+
+
+    def test_join_challenge(self):
+        self.challenge.participants.remove(self.user)
+        response = self.client.post(self.join_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn(self.user, self.challenge.participants.all())
+
+
+    def test_join_already_joined(self):
+        response = self.client.post(self.join_url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], "Already joined.")
+
+
+    def test_leave_challenge(self):
+        response = self.client.post(self.leave_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn(self.user, self.challenge.participants.all())
+
+
+    def test_leave_not_joined(self):
+        self.challenge.participants.remove(self.user)
+        response = self.client.post(self.leave_url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], "You are not a participant.")
+
+
+    def test_unauthenticated_cannot_create(self):
+        self.client.logout()
+        data = {
+            "name": "Unauthorized Challenge",
+            "description": "Should fail",
+            "start_date": (self.now + timedelta(days=1)).isoformat(),
+            "end_date": (self.now + timedelta(days=2)).isoformat()
+        }
+        response = self.client.post(self.url, data)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+    def test_unauthenticated_cannot_join_or_leave(self):
+        self.client.logout()
+        response = self.client.post(self.join_url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        response = self.client.post(self.leave_url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
