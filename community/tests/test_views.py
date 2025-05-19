@@ -4,7 +4,7 @@ from rest_framework import status
 from django.test import TestCase
 from django.urls import reverse
 
-from community.models import ForumPost
+from community.models import ForumPost, Comment
 from core.models import CustomUser as User
 
 
@@ -143,3 +143,123 @@ class ForumPostViewSetTests(TestCase):
         
         # Assert that the exact error message is in the response data
         self.assertIn(error_message, str(response.data))  # Convert the response.data to string and check for the error message
+
+
+
+class CommentViewSetTests(TestCase):
+
+    def setUp(self):
+        Comment.objects.all().delete()
+        ForumPost.objects.all().delete()
+
+        self.user = User.objects.create_user(username='commenter', password='pass123', email='commenter@test.com')
+        self.other_user = User.objects.create_user(username='someone_else', password='pass456', email='other@test.com')
+
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+        self.post = ForumPost.objects.create(user=self.user, title='Post Title', content='Post Content', is_active=True)
+
+        self.comment = Comment.objects.create(user=self.user, post=self.post, content='Initial comment', is_active=True)
+
+        self.url = reverse('comment-list')
+        self.detail_url = reverse('comment-detail', args=[self.comment.id])
+        self.toggle_url = reverse('comment-toggle-active', args=[self.comment.id])
+
+
+    def test_list_comments(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(len(response.data['results']), 1)
+
+
+    def test_retrieve_comment(self):
+        response = self.client.get(self.detail_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['id'], self.comment.id)
+
+
+    def test_create_comment_authenticated(self):
+        data = {'post': self.post.id, 'content': 'Nice post!'}
+        response = self.client.post(self.url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['content'], 'Nice post!')
+        self.assertEqual(response.data['post'], self.post.id)
+        self.assertEqual(response.data['user'], self.user.id)
+
+
+    def test_create_comment_unauthenticated(self):
+        self.client.logout()
+        data = {'post': self.post.id, 'content': 'Should not work'}
+        response = self.client.post(self.url, data)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+    def test_create_comment_with_blank_content(self):
+        data = {'post': self.post.id, 'content': '   '}
+        response = self.client.post(self.url, data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('content', response.data)
+
+
+    def test_update_comment(self):
+        data = {'post': self.post.id, 'content': 'Updated comment'}
+        response = self.client.put(self.detail_url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['content'], 'Updated comment')
+
+
+    def test_partial_update_comment(self):
+        data = {'content': 'Partially updated'}
+        response = self.client.patch(self.detail_url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['content'], 'Partially updated')
+
+
+    def test_delete_comment(self):
+        response = self.client.delete(self.detail_url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Comment.objects.filter(id=self.comment.id).exists())
+
+
+    def test_toggle_active_status(self):
+        self.assertTrue(self.comment.is_active)
+
+        response = self.client.post(self.toggle_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.comment.refresh_from_db()
+        self.assertFalse(self.comment.is_active)
+
+        response = self.client.post(self.toggle_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.comment.refresh_from_db()
+        self.assertTrue(self.comment.is_active)
+
+
+    def test_filter_by_post(self):
+        Comment.objects.create(user=self.user, post=self.post, content='Another comment')
+        response = self.client.get(self.url, {'post': self.post.id})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(all(c['post'] == self.post.id for c in response.data['results']))
+
+
+    def test_filter_by_is_active(self):
+        Comment.objects.create(user=self.user, post=self.post, content='Hidden comment', is_active=False)
+
+        response_active = self.client.get(self.url, {'is_active': 'true'})
+        self.assertEqual(response_active.status_code, status.HTTP_200_OK)
+        self.assertTrue(all(c['is_active'] is True for c in response_active.data['results']))
+
+        response_inactive = self.client.get(self.url, {'is_active': 'false'})
+        self.assertEqual(response_inactive.status_code, status.HTTP_200_OK)
+        self.assertTrue(all(c['is_active'] is False for c in response_inactive.data['results']))
+
+
+    def test_invalid_is_active_filter(self):
+        response = self.client.get(self.url, {'is_active': 'invalid'})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn(
+        "`is_active` must be a valid boolean value: true/false or 1/0.",
+        str(response.data)
+        )   
