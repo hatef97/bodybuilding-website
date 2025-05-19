@@ -1,14 +1,13 @@
-from rest_framework import viewsets
+from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
-from community.models import ForumPost
-from .serializers import ForumPostSerializer
+from community.models import ForumPost, Comment
+from .serializers import ForumPostSerializer, CommentSerializer
 
 
 
@@ -72,3 +71,57 @@ class ForumPostViewSet(viewsets.ModelViewSet):
             'status': 'success',
             'is_active': post.is_active
         }, status=status.HTTP_200_OK)
+
+
+
+class CommentViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for handling Comment objects on forum posts.
+    Supports CRUD operations and a custom action to soft-delete (deactivate) comments.
+    """
+    serializer_class = CommentSerializer
+    pagination_class = StandardResultsSetPagination
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def get_queryset(self):
+        """
+        Optionally filters comments by `post` and `is_active`.
+        """
+        queryset = Comment.objects.all()
+        post_id = self.request.query_params.get('post')
+        is_active = self.request.query_params.get('is_active')
+
+        if post_id is not None:
+            queryset = queryset.filter(post_id=post_id)
+
+        if is_active is not None:
+            if is_active.lower() in ['true', '1']:
+                queryset = queryset.filter(is_active=True)
+            elif is_active.lower() in ['false', '0']:
+                queryset = queryset.filter(is_active=False)
+            else:
+                raise ValidationError("`is_active` must be a valid boolean value: true/false or 1/0.")
+
+        return queryset
+
+    def perform_create(self, serializer):
+        """
+        Automatically assign the authenticated user as the comment author.
+        """
+        serializer.save(user=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='toggle-active')
+    def toggle_active(self, request, pk=None):
+        """
+        Custom action to toggle a comment's active status (soft delete or restore).
+        """
+        comment = self.get_object()
+        comment.is_active = not comment.is_active
+        comment.save()
+        return Response(
+            {
+                'status': 'success',
+                'is_active': comment.is_active
+            },
+            status=status.HTTP_200_OK
+        )
