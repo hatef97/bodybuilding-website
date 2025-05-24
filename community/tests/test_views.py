@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from community.models import ForumPost, Comment, Challenge
+from community.models import ForumPost, Comment, Challenge, Leaderboard
 from core.models import CustomUser as User
 
 
@@ -417,3 +417,177 @@ class ChallengeViewSetTests(TestCase):
 
         response = self.client.post(self.leave_url)
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+
+class LeaderboardViewSetTests(TestCase):
+
+    def setUp(self):
+        # Create two users
+        self.user1 = User.objects.create_user(
+            username="alice", email="alice@test.com", password="pass1"
+        )
+        self.user2 = User.objects.create_user(
+            username="bob", email="bob@test.com", password="pass2"
+        )
+
+        # Create two challenges
+        now = timezone.now()
+        self.ch1 = Challenge.objects.create(
+            name="Ch1",
+            description="First",
+            start_date=now - timedelta(days=3),
+            end_date=now + timedelta(days=3),
+            is_active=True
+        )
+        self.ch2 = Challenge.objects.create(
+            name="Ch2",
+            description="Second",
+            start_date=now - timedelta(days=1),
+            end_date=now + timedelta(days=1),
+            is_active=True
+        )
+
+        # Pre‐existing leaderboard entries:
+        # — user1 on ch1
+        self.lb1 = Leaderboard.objects.create(
+            challenge=self.ch1, user=self.user1, score=100
+        )
+        # — user2 on ch1
+        self.lb2 = Leaderboard.objects.create(
+            challenge=self.ch1, user=self.user2, score=200
+        )
+        # — **FIXED**: user2 on ch2 (so user1 can still post on ch2)
+        self.lb3 = Leaderboard.objects.create(
+            challenge=self.ch2, user=self.user2, score=50
+        )
+        # Authenticated client as user1
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user1)
+
+        # URLs
+        self.list_url = reverse("leaderboard-list")
+        self.detail_url = lambda pk: reverse("leaderboard-detail", args=[pk])
+        self.top_url = reverse("leaderboard-top")
+
+
+    def test_list_leaderboards(self):
+        """List all entries and check pagination structure."""
+        resp = self.client.get(self.list_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["count"], 3)
+        self.assertEqual(len(resp.data["results"]), 3)
+
+
+    def test_filter_by_challenge(self):
+        """Filter entries by challenge ID."""
+        resp = self.client.get(self.list_url, {"challenge": self.ch1.id})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["count"], 2)
+        for item in resp.data["results"]:
+            self.assertEqual(item["challenge"], self.ch1.id)
+
+
+    def test_retrieve_leaderboard(self):
+        """Retrieve a single entry by PK."""
+        resp = self.client.get(self.detail_url(self.lb1.id))
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["id"], self.lb1.id)
+        self.assertEqual(resp.data["user"], self.lb1.user.username)
+
+
+    def test_create_leaderboard_authenticated(self):
+        """Authenticated users can create; user auto-assigned."""
+        data = {"challenge": self.ch2.id, "score": 123}
+        resp = self.client.post(self.list_url, data, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp.data["challenge"], self.ch2.id)
+        self.assertEqual(resp.data["score"], 123)
+        self.assertEqual(resp.data["user"], self.user1.username)
+
+    def test_create_leaderboard_unauthenticated(self):
+        """Anonymous users cannot create."""
+        self.client.logout()
+        data = {"challenge": self.ch1.id, "score": 50}
+        resp = self.client.post(self.list_url, data, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+    def test_validate_score_negative(self):
+        """Score must be > 0."""
+        data = {"challenge": self.ch1.id, "score": -10}
+        resp = self.client.post(self.list_url, data, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("score", resp.data)
+        self.assertIn(
+            "greater than or equal to", 
+            str(resp.data["score"][0])
+        )
+        self.assertEqual(resp.data["score"][0].code, "min_value")
+
+
+    def test_unique_together(self):
+        """Cannot create two entries for same user & challenge."""
+        data = {"challenge": self.ch1.id, "score": 300}
+        # user1 already has entry for ch1
+        resp = self.client.post(self.list_url, data, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("non_field_errors", resp.data)
+        self.assertIn("only one leaderboard entry", resp.data["non_field_errors"][0])
+
+
+    def test_update_leaderboard(self):
+        """Full update (PUT) of an existing entry."""
+        data = {"challenge": self.ch1.id, "score": 150}
+        resp = self.client.put(self.detail_url(self.lb1.id), data, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["score"], 150)
+
+
+    def test_partial_update_leaderboard(self):
+        """Partial update (PATCH) of score."""
+        resp = self.client.patch(self.detail_url(self.lb1.id), {"score": 175}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["score"], 175)
+
+
+    def test_delete_leaderboard(self):
+        """Authenticated delete of an entry."""
+        resp = self.client.delete(self.detail_url(self.lb3.id))
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+        # Ensure it's gone
+        resp2 = self.client.get(self.detail_url(self.lb3.id))
+        self.assertEqual(resp2.status_code, status.HTTP_404_NOT_FOUND)
+
+
+    def test_top_default_limit(self):
+        """Top endpoint returns descending scores, default limit=10."""
+        resp = self.client.get(self.top_url, {"challenge": self.ch1.id})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        # Expect two entries, highest first
+        results = resp.data["results"] if "results" in resp.data else resp.data
+        self.assertEqual(results[0]["score"], 200)
+        self.assertEqual(results[1]["score"], 100)
+
+
+    def test_top_custom_limit(self):
+        """Top endpoint respects `limit` param."""
+        resp = self.client.get(self.top_url, {"challenge": self.ch1.id, "limit": 1})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        results = resp.data["results"] if "results" in resp.data else resp.data
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["score"], 200)
+
+
+    def test_top_missing_challenge_param(self):
+        """Missing `challenge` => 400."""
+        resp = self.client.get(self.top_url)
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("challenge", resp.data["detail"].lower())
+
+
+    def test_top_invalid_limit(self):
+        """Non-integer `limit` => 400."""
+        resp = self.client.get(self.top_url, {"challenge": self.ch1.id, "limit": "abc"})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("limit must be an integer", resp.data["detail"])

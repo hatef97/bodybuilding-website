@@ -136,12 +136,12 @@ class LeaderboardSerializer(serializers.ModelSerializer):
     Serializer for the Leaderboard model, which stores scores associated with a user's participation
     in a challenge.
     """
-    user = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), required=False)
+    user = HiddenField(default=CurrentUserDefault())
 
     class Meta:
         model = Leaderboard
         fields = ('id', 'challenge', 'user', 'score')
-        read_only_fields = ('id', 'user')
+        read_only_fields = ('id',)
         validators = [
             UniqueTogetherValidator(
                 queryset=Leaderboard.objects.all(),
