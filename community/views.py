@@ -6,8 +6,8 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
-from community.models import ForumPost, Comment, Challenge
-from .serializers import ForumPostSerializer, CommentSerializer, ChallengeSerializer
+from community.models import ForumPost, Comment, Challenge, Leaderboard
+from .serializers import ForumPostSerializer, CommentSerializer, ChallengeSerializer, LeaderboardSerializer
 
 
 
@@ -195,3 +195,66 @@ class ChallengeViewSet(viewsets.ModelViewSet):
             return Response({"detail": "You are not a participant."}, status=status.HTTP_400_BAD_REQUEST)
         challenge.participants.remove(user)
         return Response({"detail": "Successfully left the challenge."}, status=status.HTTP_200_OK)
+
+
+
+class LeaderboardViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for viewing and managing Leaderboard entries.
+    - GET (list/retrieve): open to all.
+    - POST/PUT/PATCH/DELETE: authenticated users only.
+    """
+    serializer_class = LeaderboardSerializer
+    pagination_class = StandardResultsSetPagination
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def get_queryset(self):
+        """
+        Optionally filter by challenge ID:
+        /leaderboards/?challenge=3
+        """
+        queryset = Leaderboard.objects.all()
+        challenge_id = self.request.query_params.get('challenge')
+        if challenge_id is not None:
+            queryset = queryset.filter(challenge_id=challenge_id)
+        return queryset
+
+    def perform_create(self, serializer):
+        """
+        Automatically assign request.user as the entry's user if none provided.
+        """
+        serializer.save(user=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def top(self, request):
+        """
+        Custom endpoint to fetch the top N scores for a given challenge:
+        /leaderboards/top/?challenge=3&limit=5
+        """
+        challenge_id = request.query_params.get('challenge')
+        try:
+            limit = int(request.query_params.get('limit', 10))
+        except ValueError:
+            return Response(
+                {"detail": "limit must be an integer."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not challenge_id:
+            return Response(
+                {"detail": "challenge query parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        top_entries = (
+            Leaderboard.objects
+            .filter(challenge_id=challenge_id)
+            .order_by('-score')[:limit]
+        )
+        page = self.paginate_queryset(top_entries)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(top_entries, many=True)
+        return Response(serializer.data)
