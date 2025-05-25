@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse
 
-from community.models import ForumPost, Comment, Challenge
+from community.models import ForumPost, Comment, Challenge, Leaderboard
 
 
 
@@ -215,4 +215,68 @@ class ChallengeAdmin(admin.ModelAdmin):
         updated = queryset.update(is_active=False)
         self.message_user(request, f"{updated} challenge(s) marked inactive.")
     make_inactive.short_description = "Mark selected as Inactive"
+
+
+
+@admin.register(Leaderboard)
+class LeaderboardAdmin(admin.ModelAdmin):
+    """
+    Admin configuration for Leaderboard.
+    - Inline score editing
+    - Quick filtering & search
+    - Custom links to related Challenge and User
+    - Batch actions to reset or adjust scores
+    """
+    list_display = (
+        'id',
+        'challenge_link',
+        'user_link',
+        'score',
+    )
+    list_display_links = ('id',)
+    list_editable = ('score',)
+    list_filter = ('challenge', 'user')
+    search_fields = ('user__username', 'challenge__name')
+    raw_id_fields = ('challenge', 'user')
+    ordering = ('-score',)
+
+    fieldsets = (
+        (None, {
+            'fields': ('challenge', 'user', 'score'),
+        }),
+    )
+
+    actions = ['reset_scores', 'double_scores']
+
+    def challenge_link(self, obj):
+        """Link to the Challenge in the admin."""
+        url = reverse('admin:community_challenge_change', args=[obj.challenge_id])
+        return format_html('<a href="{}">{}</a>', url, obj.challenge.name)
+    challenge_link.short_description = 'Challenge'
+    challenge_link.admin_order_field = 'challenge__name'
+
+    def user_link(self, obj):
+        """Link to the User in the admin."""
+        url = reverse('admin:core_customuser_change', args=[obj.user_id])
+        return format_html('<a href="{}">{}</a>', url, obj.user.username)
+    user_link.short_description = 'User'
+    user_link.admin_order_field = 'user__username'
+
+    def reset_scores(self, request, queryset):
+        """
+        Batch action: Set selected scores to zero.
+        """
+        updated = queryset.update(score=0)
+        self.message_user(request, f"{updated} score(s) reset to 0.")
+    reset_scores.short_description = "Reset selected scores to zero"
+
+    def double_scores(self, request, queryset):
+        """
+        Batch action: Double the score for selected entries.
+        """
+        for entry in queryset:
+            entry.score = entry.score * 2
+            entry.save()
+        self.message_user(request, f"Doubled scores for {queryset.count()} entry(ies).")
+    double_scores.short_description = "Double selected scores"
     
