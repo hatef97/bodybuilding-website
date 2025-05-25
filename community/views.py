@@ -1,13 +1,13 @@
 from rest_framework import viewsets, status
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
-from community.models import ForumPost, Comment, Challenge, Leaderboard
-from .serializers import ForumPostSerializer, CommentSerializer, ChallengeSerializer, LeaderboardSerializer
+from community.models import ForumPost, Comment, Challenge, Leaderboard, UserProfile
+from .serializers import ForumPostSerializer, CommentSerializer, ChallengeSerializer, LeaderboardSerializer, UserProfileSerializer
 
 
 
@@ -258,3 +258,39 @@ class LeaderboardViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(top_entries, many=True)
         return Response(serializer.data)
+
+
+
+class UserProfileViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for viewing, creating, and updating user profiles.
+
+    - Only authenticated users may interact.
+    - Non-staff users see (and edit) only their own profile.
+    - Staff may list and retrieve all profiles.
+    """
+    serializer_class = UserProfileSerializer
+    pagination_class = StandardResultsSetPagination
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = UserProfile.objects.all()
+        if not user.is_staff:
+            # Non-staff only get their own profile
+            return qs.filter(user=user)
+        return qs
+
+    def perform_create(self, serializer):
+        # Assign the logged-in user automatically
+        serializer.save(user=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def me(self, request):
+        """
+        GET /user_profiles/me/
+        Returns the requesting user's profile (create if missing).
+        """
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        serializer = self.get_serializer(profile)
+        return Response(serializer.data, status=status.HTTP_200_OK)
