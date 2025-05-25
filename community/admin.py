@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse
 
-from community.models import ForumPost, Comment
+from community.models import ForumPost, Comment, Challenge
 
 
 
@@ -149,4 +149,70 @@ class CommentAdmin(admin.ModelAdmin):
         updated = queryset.update(is_active=False)
         self.message_user(request, f"{updated} comment(s) marked inactive.")
     make_inactive.short_description = "Mark selected comments Inactive"
+
+
+
+@admin.register(Challenge)
+class ChallengeAdmin(admin.ModelAdmin):
+    """
+    Admin configuration for Challenge.
+    Enables quick filtering, search, participant management, and status toggles.
+    """
+    list_display = (
+        "id",
+        "name",
+        "start_date",
+        "end_date",
+        "participant_count",
+        "is_active",
+    )
+    list_display_links = ("id", "name")
+    list_editable = ("is_active",)
+    list_filter = (
+        "is_active",
+        "start_date",
+        "end_date",
+    )
+    search_fields = ("name", "description")
+    date_hierarchy = "start_date"
+    readonly_fields = ("created_at",)
+    ordering = ("-start_date",)
+    filter_horizontal = ("participants",)
+
+    fieldsets = (
+        (None, {
+            "fields": ("name", "description", "is_active")
+        }),
+        ("Schedule", {
+            "classes": ("collapse",),
+            "fields": ("start_date", "end_date", "created_at"),
+        }),
+        ("Participants", {
+            "fields": ("participants",),
+        }),
+    )
+
+    actions = ["make_active", "make_inactive"]
+
+    def participant_count(self, obj):
+        """Display number of participants, linked to filtered User list."""
+        count = obj.participants.count()
+        url = (
+            reverse("admin:core_customuser_changelist")
+            + f"?challenges__id__exact={obj.pk}"
+        )
+        return format_html('<a href="{}">{} user(s)</a>', url, count)
+    participant_count.short_description = "Participants"
+
+    def make_active(self, request, queryset):
+        """Admin action to mark selected challenges active."""
+        updated = queryset.update(is_active=True)
+        self.message_user(request, f"{updated} challenge(s) marked active.")
+    make_active.short_description = "Mark selected as Active"
+
+    def make_inactive(self, request, queryset):
+        """Admin action to mark selected challenges inactive."""
+        updated = queryset.update(is_active=False)
+        self.message_user(request, f"{updated} challenge(s) marked inactive.")
+    make_inactive.short_description = "Mark selected as Inactive"
     
