@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from community.models import ForumPost, Comment, Challenge, Leaderboard
+from community.models import ForumPost, Comment, Challenge, Leaderboard, UserProfile
 from core.models import CustomUser as User
 
 
@@ -591,3 +591,163 @@ class LeaderboardViewSetTests(TestCase):
         resp = self.client.get(self.top_url, {"challenge": self.ch1.id, "limit": "abc"})
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("limit must be an integer", resp.data["detail"])
+
+
+
+class UserProfileViewSetTests(TestCase):
+    
+    def setUp(self):
+        # Create a regular user and a staff user
+        self.user = User.objects.create_user(
+            username="regular", password="pass123", email="reg@test.com"
+        )
+        self.staff = User.objects.create_user(
+            username="staff", password="pass456", email="staff@test.com", is_staff=True
+        )
+
+        # Create an initial profile for the regular user
+        self.profile = UserProfile.objects.create(
+            user=self.user,
+            bio="Old bio",
+            social_links={"twitter": "t.com/regular"},
+        )
+
+        # Clients
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+        self.staff_client = APIClient()
+        self.staff_client.force_authenticate(user=self.staff)
+
+        self.anon_client = APIClient()
+
+        # URLs
+        self.list_url = reverse("userprofile-list")
+        self.detail_url = lambda pk: reverse("userprofile-detail", args=[pk])
+        self.me_url = reverse("userprofile-me")
+
+
+    def test_me_returns_existing_profile(self):
+        """GET /user_profiles/me/ returns the user's profile if it exists."""
+        resp = self.client.get(self.me_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["id"], self.profile.id)
+        self.assertEqual(resp.data["bio"], "Old bio")
+
+
+    def test_me_creates_profile_if_missing(self):
+        """If no profile exists, GET /me/ should create one."""
+        # Delete existing
+        self.profile.delete()
+        self.assertFalse(UserProfile.objects.filter(user=self.user).exists())
+
+        resp = self.client.get(self.me_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertTrue(UserProfile.objects.filter(user=self.user).exists())
+        self.assertIn("id", resp.data)
+
+
+    def test_list_as_non_staff(self):
+        """Non-staff users see only their own profile in list."""
+        # Create another user's profile
+        other = User.objects.create_user(username="other", password="x", email="o@test.com")
+        UserProfile.objects.create(user=other, bio="Other")
+
+        resp = self.client.get(self.list_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        # Only 1 result for self.user
+        self.assertEqual(resp.data["count"], 1)
+        self.assertEqual(resp.data["results"][0]["user"], self.user.id)
+
+
+    def test_list_as_staff(self):
+        """Staff can see all profiles."""
+        # Create another
+        other = User.objects.create_user(username="other2", password="x", email="o2@test.com")
+        UserProfile.objects.create(user=other, bio="Other2")
+
+        resp = self.staff_client.get(self.list_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        # Two profiles now
+        self.assertEqual(resp.data["count"], 2)
+
+
+    def test_retrieve_own_profile(self):
+        """Regular user can retrieve their own profile."""
+        resp = self.client.get(self.detail_url(self.profile.id))
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["user"], self.user.id)
+
+
+    def test_retrieve_other_profile_forbidden(self):
+        """Regular user cannot retrieve someone else's profile."""
+        other = User.objects.create_user(username="other3", password="x", email="o3@test.com")
+        other_profile = UserProfile.objects.create(user=other, bio="B")
+        resp = self.client.get(self.detail_url(other_profile.id))
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+
+    def test_create_profile(self):
+        """POST /user_profiles/ creates a profile and auto-assigns user."""
+        # Delete existing
+        self.profile.delete()
+        data = {
+            "bio": "New bio",
+            "social_links": {"fb": "fb.com/regular"},
+        }
+        resp = self.client.post(self.list_url, data, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        obj = UserProfile.objects.get(user=self.user)
+        self.assertEqual(obj.bio, "New bio")
+        self.assertEqual(resp.data["user"], self.user.id)
+
+
+    def test_create_duplicate_profile_fails(self):
+        """Cannot create a second profile for the same user (OneToOne)."""
+        data = {"bio": "Another", "social_links": {}}
+        resp = self.client.post(self.list_url, data, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+    def test_update_profile_put(self):
+        """PUT on own profile updates all updatable fields."""
+        data = {
+            "bio": "Updated bio",
+            "social_links": {"insta": "i.com/regular"},
+        }
+        resp = self.client.put(self.detail_url(self.profile.id), data, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.bio, "Updated bio")
+
+
+    def test_update_profile_patch(self):
+        """PATCH on own profile can update partial data."""
+        resp = self.client.patch(self.detail_url(self.profile.id), {"bio": "Patched"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.bio, "Patched")
+
+
+    def test_invalid_social_links(self):
+        """Providing non-dict for social_links yields 400."""
+        resp = self.client.patch(self.detail_url(self.profile.id), {"social_links": "not-a-dict"})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("social_links", resp.data)
+
+
+    def test_unauthenticated_access(self):
+        """Unauthenticated users get 401 on all endpoints."""
+        self.anon_client.logout()
+        # list
+        resp = self.anon_client.get(self.list_url)
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+        # create
+        resp = self.anon_client.post(self.list_url, {"bio": "X"})
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+        # retrieve
+        resp = self.anon_client.get(self.detail_url(self.profile.id))
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+        # me
+        resp = self.anon_client.get(self.me_url)
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)

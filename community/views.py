@@ -281,6 +281,15 @@ class UserProfileViewSet(viewsets.ModelViewSet):
             return qs.filter(user=user)
         return qs
 
+    def create(self, request, *args, **kwargs):
+        # Prevent duplicate profile creation
+        if UserProfile.objects.filter(user=request.user).exists():
+            return Response(
+                {"detail": "A profile for this user already exists."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return super().create(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         # Assign the logged-in user automatically
         serializer.save(user=self.request.user)
