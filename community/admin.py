@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse
 
-from community.models import ForumPost, Comment, Challenge, Leaderboard
+from community.models import ForumPost, Comment, Challenge, Leaderboard, UserProfile
 
 
 
@@ -279,4 +279,51 @@ class LeaderboardAdmin(admin.ModelAdmin):
             entry.save()
         self.message_user(request, f"Doubled scores for {queryset.count()} entry(ies).")
     double_scores.short_description = "Double selected scores"
+
+
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    """
+    Admin panel for UserProfile.
+    - View and edit bio, social links, and picture.
+    - Quick link to the related User.
+    - Filters, search, and read-only timestamp.
+    """
+    list_display = (
+        "id",
+        "user_link",
+        "short_bio",
+        "created_at",
+    )
+    list_display_links = ("id", "user_link")
+    list_filter = ("created_at",)
+    search_fields = ("user__username", "user__email", "bio")
+    readonly_fields = ("created_at",)
+    raw_id_fields = ("user",)
+    ordering = ("-created_at",)
+
+    fieldsets = (
+        (None, {
+            "fields": ("user", "bio", "profile_picture", "social_links"),
+        }),
+        ("Timestamps", {
+            "classes": ("collapse",),
+            "fields": ("created_at",),
+        }),
+    )
+
+    def user_link(self, obj):
+        """Clickable link to the User change page."""
+        url = reverse("admin:core_customuser_change", args=[obj.user_id])
+        return format_html("<a href='{}'>{}</a>", url, obj.user.username)
+    user_link.short_description = "User"
+    user_link.admin_order_field = "user__username"
+
+    def short_bio(self, obj):
+        """Truncate long bios for display."""
+        if not obj.bio:
+            return ""
+        return (obj.bio[:75] + "...") if len(obj.bio) > 75 else obj.bio
+    short_bio.short_description = "Bio"
     
