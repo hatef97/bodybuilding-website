@@ -1,7 +1,10 @@
+import math
+
 from django.conf import settings
 from django.db import models
 from django.urls import reverse
 from django.core.validators import URLValidator
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -355,4 +358,141 @@ class ExerciseGuide(models.Model):
         Assumes a named URL 'content:exercise-detail' expecting a slug.
         """
         return reverse('content:exercise-detail', kwargs={'slug': self.slug})
-        
+
+
+
+class ActiveCalculatorManager(models.Manager):
+    """Manager returning only active calculators."""
+    def get_queryset(self):
+        return super().get_queryset().filter(is_active=True)
+
+
+
+class Calculator(models.Model):
+    """
+    Defines a fitness calculator (BMI, Body Fat, etc.) with:
+    - name & slug for URLs
+    - parameter schema in JSONField
+    - a Python 'formula' expression evaluated at runtime
+    """
+
+    key = models.CharField(
+        max_length=50,
+        unique=True,
+        help_text="Unique identifier, e.g. 'bmi', 'body_fat'."
+    )
+    name = models.CharField(
+        max_length=100,
+        help_text="Human–readable name, e.g. 'Body Mass Index (BMI)'."
+    )
+    slug = models.SlugField(
+        max_length=60,
+        unique=True,
+        blank=True,
+        help_text="Auto–generated from key or name if blank."
+    )
+
+    description = models.TextField(
+        blank=True,
+        help_text="Explain what this calculator does."
+    )
+
+    parameters = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Schema for inputs, e.g.:\n"
+            "{ 'weight_kg': {'label':'Weight (kg)','min':30,'max':300,'step':0.1},\n"
+            "  'height_m': {'label':'Height (m)','min':1.0,'max':2.5,'step':0.01} }\n"
+        )
+    )
+
+    formula = models.TextField(
+        help_text=(
+            "Python expression using parameter names, e.g.:\n"
+            "'weight_kg / (height_m ** 2)'"
+        )
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Uncheck to disable this calculator."
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # Managers
+    objects = models.Manager()
+    active = ActiveCalculatorManager()
+
+    class Meta:
+        ordering = ['name']
+        indexes = [
+            models.Index(fields=['slug']),
+            models.Index(fields=['key']),
+        ]
+        verbose_name = "Calculator"
+        verbose_name_plural = "Calculators"
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        # Ensure formula can be compiled
+        try:
+            compile(self.formula, '<formula>', 'eval')
+        except Exception as e:
+            raise ValidationError({'formula': f"Invalid Python expression: {e}"})
+
+        # Slug integrity
+        if self.slug and self.slug != slugify(self.slug):
+            raise ValidationError({'slug': "Slug must be URL-friendly (letters, numbers, hyphens)."})
+
+        # Parameter keys match formula variables
+        import re
+        var_names = set(re.findall(r'\b[a-zA-Z_]\w*\b', self.formula))
+        missing = var_names - set(self.parameters.keys()) - set(dir(math))
+        if missing:
+            raise ValidationError({
+                'formula': f"Formula refers to undefined parameters: {', '.join(missing)}"
+            })
+
+    def save(self, *args, **kwargs):
+        # Auto–slug from key if missing
+        if not self.slug:
+            base = slugify(self.key)[:55]
+            slug = base
+            n = 1
+            while Calculator.objects.filter(slug=slug).exists():
+                slug = f"{base}-{n}"
+                n += 1
+            self.slug = slug
+
+        super().save(*args, **kwargs)
+
+    def calculate(self, **inputs):
+        """
+        Evaluate the formula with given inputs.
+        - Only math module and provided inputs are in scope.
+        - Raises KeyError or ValueError on missing/invalid inputs.
+        """
+        # Validate inputs
+        for name, schema in self.parameters.items():
+            if name not in inputs:
+                raise KeyError(f"Missing parameter: {name}")
+            val = inputs[name]
+            minv = schema.get('min')
+            maxv = schema.get('max')
+            if minv is not None and val < minv:
+                raise ValueError(f"{name} below minimum {minv}")
+            if maxv is not None and val > maxv:
+                raise ValueError(f"{name} above maximum {maxv}")
+
+        # Safe evaluation context
+        safe_locals = {**{k: inputs[k] for k in self.parameters}, 'math': math}
+        return eval(self.formula, {"__builtins__": {}}, safe_locals)
+
+    def get_absolute_url(self):
+        """URL to calculator detail (for interactive forms)."""
+        return reverse('content:calculator-detail', kwargs={'slug': self.slug})
