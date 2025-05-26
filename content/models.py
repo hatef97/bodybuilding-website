@@ -244,3 +244,115 @@ class Video(models.Model):
         Assumes a named route 'content:video-detail' expecting a slug.
         """
         return reverse('content:video-detail', kwargs={'slug': self.slug})
+
+
+
+class ExerciseGuide(models.Model):
+    """
+    Step-by-step exercise guide.
+    Supports auto-slugging, categorization, difficulty levels, images, and embedded video.
+    """
+
+    DIFFICULTY_BEGINNER = 'beginner'
+    DIFFICULTY_INTERMEDIATE = 'intermediate'
+    DIFFICULTY_ADVANCED = 'advanced'
+    DIFFICULTY_CHOICES = [
+        (DIFFICULTY_BEGINNER, 'Beginner'),
+        (DIFFICULTY_INTERMEDIATE, 'Intermediate'),
+        (DIFFICULTY_ADVANCED, 'Advanced'),
+    ]
+
+    name = models.CharField(max_length=255, unique=True)
+    slug = models.SlugField(
+        max_length=255,
+        unique=True,
+        blank=True,
+        help_text="Auto-generated from name if left blank."
+    )
+
+    excerpt = models.TextField(
+        blank=True,
+        help_text="Short summary or teaser shown in listings."
+    )
+    steps = models.TextField(
+        help_text="Detailed, ordered steps (Markdown or HTML)."
+    )
+
+    difficulty = models.CharField(
+        max_length=12,
+        choices=DIFFICULTY_CHOICES,
+        default=DIFFICULTY_BEGINNER,
+        db_index=True,
+        help_text="Skill level required."
+    )
+
+    primary_muscle = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Primary muscle group (e.g. 'Chest', 'Legs')."
+    )
+    equipment_required = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Comma-separated list of equipment, if any."
+    )
+
+    image = models.ImageField(
+        upload_to='exercise_guides/',
+        blank=True,
+        null=True,
+        help_text="Optional illustrative image."
+    )
+    video_embed = models.TextField(
+        blank=True,
+        help_text="Optional embed HTML (YouTube, Vimeo, etc.)."
+    )
+
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='exercise_guides',
+        help_text="User who created this guide."
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+        indexes = [
+            models.Index(fields=['slug']),
+            models.Index(fields=['difficulty']),
+        ]
+        verbose_name = "Exercise Guide"
+        verbose_name_plural = "Exercise Guides"
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        # Slug will be auto-generated in save(), but ensure steps are non-empty:
+        if not self.steps.strip():
+            raise models.ValidationError("Exercise steps cannot be empty.")
+
+    def save(self, *args, **kwargs):
+        # Auto-slug from name
+        if not self.slug:
+            base = slugify(self.name)[:200]
+            slug = base
+            n = 1
+            while ExerciseGuide.objects.filter(slug=slug).exists():
+                slug = f"{base}-{n}"
+                n += 1
+            self.slug = slug
+
+        super().save(*args, **kwargs)
+
+    def get_absolute_url(self):
+        """
+        Returns the URL to view this guide.
+        Assumes a named URL 'content:exercise-detail' expecting a slug.
+        """
+        return reverse('content:exercise-detail', kwargs={'slug': self.slug})
+        
