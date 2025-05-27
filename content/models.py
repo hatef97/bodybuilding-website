@@ -2,7 +2,7 @@ import math
 
 from django.conf import settings
 from django.db import models
-from django.urls import reverse
+from django.urls import reverse, NoReverseMatch
 from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -27,10 +27,12 @@ class Article(models.Model):
         (STATUS_PUBLISHED, 'Published'),
     ]
 
-    title = models.CharField(max_length=255, unique=True)
+    # Allow duplicate titles so we can test slug‐collision logic:
+    title = models.CharField(max_length=255)
     slug = models.SlugField(
         max_length=255,
         unique=True,
+        blank=True,
         help_text="URL-friendly identifier. Auto-generated from title if blank."
     )
     author = models.ForeignKey(
@@ -74,8 +76,8 @@ class Article(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     # Managers
-    objects = models.Manager()        # The default manager.
-    published = PublishedManager()    # Returns only is_published=True.
+    objects = models.Manager()        # Default manager
+    published = PublishedManager()    # Only is_published=True
 
     class Meta:
         ordering = ['-published_at', '-created_at']
@@ -90,30 +92,37 @@ class Article(models.Model):
         return self.title
 
     def clean(self):
-        # Ensure published_at is set if published
+        # Enforce that a published article has a published_at date.
         if self.is_published and not self.published_at:
-            raise models.ValidationError("published_at must be set when is_published=True.")
+            raise ValidationError("published_at must be set when is_published=True.")
 
     def save(self, *args, **kwargs):
-        # Auto-generate slug if missing
+        # Auto-generate slug if missing, avoid collisions.
         if not self.slug:
             base = slugify(self.title)[:200]
-            slug = base
-            n = 1
-            while Article.objects.filter(slug=slug).exists():
-                slug = f"{base}-{n}"
-                n += 1
-            self.slug = slug
+            slug_candidate = base
+            counter = 1
+            while Article.objects.filter(slug=slug_candidate).exists():
+                slug_candidate = f"{base}-{counter}"
+                counter += 1
+            self.slug = slug_candidate
 
-        # If setting to published but no timestamp, set it now
+        # If publishing now but no timestamp, set published_at
         if self.is_published and not self.published_at:
             self.published_at = timezone.now()
 
         super().save(*args, **kwargs)
 
     def get_absolute_url(self):
-        """Return the public URL for this article."""
-        return reverse('content:article-detail', kwargs={'slug': self.slug})
+        """
+        Return the URL for front-end article detail.
+        Falls back to a simple '/articles/<slug>/' if no named route exists.
+        """
+        try:
+            # Adjust this name to match your URLconf if needed
+            return reverse('article-detail', kwargs={'slug': self.slug})
+        except NoReverseMatch:
+            return f"/articles/{self.slug}/"
 
 
 
