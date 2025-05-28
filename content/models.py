@@ -228,10 +228,9 @@ class Video(models.Model):
         # Ensure slug uniqueness is handled by save
         # Ensure published_at is set if published
         if self.is_published and not self.published_at:
-            raise models.ValidationError("published_at must be set when is_published=True.")
-        # Must have either URL or embed_code
+            raise ValidationError("published_at must be set when is_published=True.")
         if not (self.url or self.embed_code):
-            raise models.ValidationError("Provide either a URL or embed code for the video.")
+            raise ValidationError("Provide either a URL or embed code for the video.")
 
     def save(self, *args, **kwargs):
         # Auto-generate a unique slug if missing
@@ -255,8 +254,10 @@ class Video(models.Model):
         Returns the front-end URL for this video.
         Assumes a named route 'content:video-detail' expecting a slug.
         """
-        return reverse('content:video-detail', kwargs={'slug': self.slug})
-
+        try:
+            return reverse('content:video-detail', kwargs={'slug': self.slug})
+        except NoReverseMatch:
+            return f"/videos/{self.slug}/"
 
 
 class ExerciseGuide(models.Model):
