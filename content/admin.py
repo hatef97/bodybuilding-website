@@ -3,7 +3,7 @@ from django.utils.html import format_html
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Article, Video
+from .models import Article, Video, ExerciseGuide
 
 
 
@@ -202,3 +202,77 @@ class VideoAdmin(admin.ModelAdmin):
         )
         self.message_user(request, f"{updated} video(s) reverted to draft.")
     make_draft.short_description = "Revert selected to Draft"
+
+
+
+@admin.register(ExerciseGuide)
+class ExerciseGuideAdmin(admin.ModelAdmin):
+    """
+    Admin panel configuration for the ExerciseGuide model.
+    """
+    # Columns displayed in list view
+    list_display = (
+        'name',
+        'slug',
+        'difficulty',
+        'primary_muscle',
+        'equipment_required',
+        'author',
+        'created_at',
+        'updated_at',
+    )
+
+    # Make slug read-only (auto-generated)
+    readonly_fields = ('slug', 'created_at', 'updated_at')
+
+    def get_readonly_fields(self, request, obj=None):
+        """
+        Make 'slug' writable on add forms; read-only on change forms.
+        """
+        # On add (obj is None), exclude slug from readonly_fields
+        if obj is None:
+            return [f for f in self.readonly_fields if f != 'slug']
+        return self.readonly_fields
+
+    # Fields automatically populated from other fields
+    prepopulated_fields = {
+        'slug': ('name',),
+    }
+
+    # Filters in the sidebar
+    list_filter = (
+        'difficulty',
+        'primary_muscle',
+        'author',
+    )
+
+    # Searchable fields
+    search_fields = (
+        'name',
+        'excerpt',
+        'steps',
+        'equipment_required',
+    )
+
+    # Default ordering
+    ordering = ('name',)
+
+    # Organize fields into collapsible sections
+    fieldsets = (
+        (None, {
+            'fields': ('name', 'slug', 'author')
+        }),
+        ('Content', {
+            'fields': ('excerpt', 'steps')
+        }),
+        ('Attributes', {
+            'fields': ('difficulty', 'primary_muscle', 'equipment_required')
+        }),
+        ('Media', {
+            'fields': ('image', 'video_embed')
+        }),
+        ('Timestamps', {
+            'classes': ('collapse',),
+            'fields': ('created_at', 'updated_at'),
+        }),
+    )
