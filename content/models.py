@@ -347,7 +347,7 @@ class ExerciseGuide(models.Model):
     def clean(self):
         # Slug will be auto-generated in save(), but ensure steps are non-empty:
         if not self.steps.strip():
-            raise models.ValidationError("Exercise steps cannot be empty.")
+            raise ValidationError("Exercise steps cannot be empty.")
 
     def save(self, *args, **kwargs):
         # Auto-slug from name

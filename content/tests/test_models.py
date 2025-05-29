@@ -3,8 +3,10 @@ from django.test import TestCase
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.utils.text import slugify
+from django.urls import NoReverseMatch
 
-from content.models import Article, Video
+from content.models import Article, Video, ExerciseGuide
+from core.models import CustomUser as User
 
 
 
@@ -116,7 +118,7 @@ class ArticleModelTests(TestCase):
 
 
 class VideoModelTests(TestCase):
-    
+
     def setUp(self):
         # Create a draft video without slug or published_at; URL only
         self.draft = Video.objects.create(
@@ -238,3 +240,91 @@ class VideoModelTests(TestCase):
         url = self.draft.get_absolute_url()
         expected = f"/videos/{self.draft.slug}/"
         self.assertEqual(url, expected)
+
+
+
+class ExerciseGuideModelTests(TestCase):
+
+    def setUp(self):
+        # Create an author
+        self.author = User.objects.create_user(email='guideauthor@mail.com', username="guideauthor", password="password")
+        # Create a valid guide without slug (to trigger auto‐slug)
+        self.guide1 = ExerciseGuide.objects.create(
+            name="Perfect Push-Up",
+            slug="",  # will be auto‐slugged to "perfect-push-up"
+            excerpt="A foundational chest exercise.",
+            steps="1. Place hands under shoulders.\n2. Lower chest to ground.\n3. Push back up.",
+            difficulty=ExerciseGuide.DIFFICULTY_BEGINNER,
+            primary_muscle="Chest",
+            equipment_required="None",
+            image=None,
+            video_embed="",
+            author=self.author,
+        )
+
+
+    def test_str_returns_name(self):
+        """__str__ should return the guide's name."""
+        self.assertEqual(str(self.guide1), "Perfect Push-Up")
+
+
+    def test_slug_auto_generated_on_save(self):
+        """Saving with blank slug auto‐populates slugified name."""
+        expected = slugify(self.guide1.name)
+        self.assertEqual(self.guide1.slug, expected)
+
+
+    def test_slug_uniqueness_collision(self):
+        """
+        Two distinct names that slugify to the same base produce different slugs.
+        We use "Perfect Push-Up!" so slugify → "perfect-push-up", colliding with guide1.
+        """
+        guide2 = ExerciseGuide.objects.create(
+            name="Perfect Push-Up!",
+            slug="",  # same base slug
+            excerpt=self.guide1.excerpt,
+            steps=self.guide1.steps,
+            difficulty=self.guide1.difficulty,
+            primary_muscle=self.guide1.primary_muscle,
+            equipment_required=self.guide1.equipment_required,
+            image=None,
+            video_embed="",
+            author=self.author,
+        )
+
+        base = slugify(self.guide1.name)
+        # guide1.slug == base; guide2.slug should be base-1 (or higher)
+        self.assertTrue(guide2.slug.startswith(base))
+        self.assertNotEqual(guide2.slug, self.guide1.slug)
+
+
+    def test_clean_rejects_empty_steps(self):
+        """
+        clean() should raise ValidationError if steps are blank or whitespace.
+        """
+        bad = ExerciseGuide(
+            name="No Steps Guide",
+            slug="",
+            excerpt="Missing steps.",
+            steps="   \n  ",  # whitespace only
+            difficulty=ExerciseGuide.DIFFICULTY_BEGINNER,
+            primary_muscle="Legs",
+            equipment_required="None",
+            image=None,
+            video_embed="",
+            author=self.author,
+        )
+        with self.assertRaises(ValidationError) as cm:
+            bad.full_clean()
+
+        self.assertIn("Exercise steps cannot be empty", str(cm.exception))
+
+
+    def test_get_absolute_url_raises_without_namespace(self):
+        """
+        get_absolute_url() should attempt reverse('content:exercise-detail', …)
+        and, since no 'content' namespace is loaded in tests, raise NoReverseMatch.
+        """
+        with self.assertRaises(NoReverseMatch):
+            self.guide1.get_absolute_url()
+            
