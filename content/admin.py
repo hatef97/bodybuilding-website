@@ -3,7 +3,7 @@ from django.utils.html import format_html
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Article
+from .models import Article, Video
 
 
 
@@ -100,4 +100,105 @@ class ArticleAdmin(admin.ModelAdmin):
             is_published=False
         )
         self.message_user(request, f"{updated} article(s) reverted to Draft")
+    make_draft.short_description = "Revert selected to Draft"
+
+
+
+@admin.register(Video)
+class VideoAdmin(admin.ModelAdmin):
+    """
+    Admin configuration for the Video model:
+      • Manage draft/publish workflow
+      • Auto-slug management
+      • Thumbnail preview
+      • Bulk publish/draft actions
+    """
+
+    # Columns shown in the list view
+    list_display = (
+        'id', 'title', 'author_link', 'status', 'is_published',
+        'published_at', 'duration_display',
+    )
+    list_display_links = ('id', 'title')
+    list_editable = ('is_published',)
+    list_filter = ('status', 'is_published', 'author', 'published_at')
+    search_fields = ('title', 'description', 'author__username')
+    date_hierarchy = 'published_at'
+
+    # Prepopulate slug from title and raw-id lookup for author
+    prepopulated_fields = {'slug': ('title',)}
+    raw_id_fields = ('author',)
+
+    # Read-only fields and previews
+    readonly_fields = ('created_at', 'updated_at', 'thumbnail_preview')
+
+    # Organize fields into logical sections
+    fieldsets = (
+        (None, {
+            'fields': (
+                'title', 'slug', 'url', 'embed_code',
+                'description', 'thumbnail',
+            )
+        }),
+        ('Publication', {
+            'classes': ('collapse',),
+            'fields': (
+                'status', 'is_published', 'published_at',
+                'thumbnail_preview',
+            )
+        }),
+        ('Metadata', {
+            'classes': ('collapse',),
+            'fields': ('duration', 'author'),
+        }),
+        ('Timestamps', {
+            'classes': ('collapse',),
+            'fields': ('created_at', 'updated_at'),
+        }),
+    )
+
+    # Bulk actions
+    actions = ['make_published', 'make_draft']
+
+    def author_link(self, obj):
+        """Clickable link to the author in the User admin."""
+        if obj.author_id:
+            url = reverse('admin:core_customuser_change', args=[obj.author_id])
+            return format_html('<a href="{}">{}</a>', url, obj.author.username)
+        return '-'
+    author_link.short_description = 'Author'
+    author_link.admin_order_field = 'author__username'
+
+    def thumbnail_preview(self, obj):
+        """Render a small preview of the video thumbnail."""
+        if obj.thumbnail:
+            return format_html(
+                '<img src="{}" style="max-height:120px; max-width:160px; object-fit:cover;" />',
+                obj.thumbnail.url
+            )
+        return '(No thumbnail)'
+    thumbnail_preview.short_description = 'Thumbnail'
+
+    def duration_display(self, obj):
+        """Format duration as H:MM:SS or blank."""
+        return str(obj.duration) if obj.duration else '-'
+    duration_display.short_description = 'Duration'
+
+    def make_published(self, request, queryset):
+        """Bulk action: mark selected videos as published now."""
+        updated = queryset.update(
+            status=Video.STATUS_PUBLISHED,
+            is_published=True,
+            published_at=timezone.now()
+        )
+        self.message_user(request, f"{updated} video(s) marked as published.")
+    make_published.short_description = "Mark selected as Published"
+
+    def make_draft(self, request, queryset):
+        """Bulk action: revert selected videos to draft."""
+        updated = queryset.update(
+            status=Video.STATUS_DRAFT,
+            is_published=False
+        )
+        self.message_user(request, f"{updated} video(s) reverted to draft.")
     make_draft.short_description = "Revert selected to Draft"
