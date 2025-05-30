@@ -1,10 +1,10 @@
-import math
+import math, re
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.urls import reverse, NoReverseMatch
 from django.core.validators import URLValidator
-from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -449,23 +449,24 @@ class Calculator(models.Model):
         return self.name
 
     def clean(self):
-        # Ensure formula can be compiled
+        # 1) Syntax-check only via compile()
         try:
             compile(self.formula, '<formula>', 'eval')
-        except Exception as e:
+        except SyntaxError as e:
             raise ValidationError({'formula': f"Invalid Python expression: {e}"})
 
-        # Slug integrity
+        # 2) Slug must be URL-friendly if provided
         if self.slug and self.slug != slugify(self.slug):
-            raise ValidationError({'slug': "Slug must be URL-friendly (letters, numbers, hyphens)."})
+            raise ValidationError({'slug': "Slug must be URL-friendly (letters, numbers or hyphens)."})
 
-        # Parameter keys match formula variables
-        import re
+        # 3) Find all names in the formula, then check against allowed
         var_names = set(re.findall(r'\b[a-zA-Z_]\w*\b', self.formula))
-        missing = var_names - set(self.parameters.keys()) - set(dir(math))
+        allowed = set(self.parameters.keys()) | set(dir(math))
+        missing = var_names - allowed
         if missing:
+            names = ", ".join(sorted(missing))
             raise ValidationError({
-                'formula': f"Formula refers to undefined parameters: {', '.join(missing)}"
+                'formula': f"Formula refers to undefined parameters: {names}"
             })
 
     def save(self, *args, **kwargs):

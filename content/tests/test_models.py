@@ -1,11 +1,15 @@
+import math
+import re
+
 from datetime import timedelta
+
 from django.test import TestCase
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.utils.text import slugify
 from django.urls import NoReverseMatch
 
-from content.models import Article, Video, ExerciseGuide
+from content.models import Article, Video, ExerciseGuide, Calculator, ActiveCalculatorManager
 from core.models import CustomUser as User
 
 
@@ -327,4 +331,121 @@ class ExerciseGuideModelTests(TestCase):
         """
         with self.assertRaises(NoReverseMatch):
             self.guide1.get_absolute_url()
-            
+
+
+
+class CalculatorModelTests(TestCase):
+
+    def setUp(self):
+        self.valid_payload = {
+            "key": "bmi",
+            "name": "Body Mass Index",
+            "description": "Calculate BMI",
+            "parameters": {
+                "weight_kg": {"label": "Weight (kg)", "min": 10, "max": 300, "step": 0.1},
+                "height_m": {"label": "Height (m)",  "min": 0.5, "max": 3.0, "step": 0.01},
+            },
+            "formula": "weight_kg / (height_m ** 2)",
+        }
+
+
+    def test_str_returns_name(self):
+        calc = Calculator(**self.valid_payload)
+        self.assertEqual(str(calc), self.valid_payload["name"])
+
+
+    def test_active_manager_filters_correctly(self):
+        a = Calculator.objects.create(**self.valid_payload)
+        b = Calculator.objects.create(
+            **{**self.valid_payload, "key": "bmi2", "name": "BMI Two", "is_active": False}
+        )
+        qs = Calculator.active.all()
+        self.assertIn(a, qs)
+        self.assertNotIn(b, qs)
+        # the custom manager itself
+        self.assertIsInstance(Calculator.active, ActiveCalculatorManager)
+
+
+    def test_clean_invalid_formula_raises(self):
+        bad = Calculator(**{**self.valid_payload, "formula": "1 / ("})
+        with self.assertRaises(ValidationError) as cm:
+            bad.full_clean()
+        self.assertIn("formula", cm.exception.message_dict)
+        msg = cm.exception.message_dict["formula"][0]
+        self.assertTrue(msg.startswith("Invalid Python expression"))
+
+
+    def test_clean_bad_slug_raises(self):
+        # supply a slug that has spaces and symbols
+        calc = Calculator(**{**self.valid_payload, "slug": "bad slug!"})
+        with self.assertRaises(ValidationError) as cm:
+            calc.full_clean()
+        self.assertIn("slug", cm.exception.error_dict)
+        # Django's built-in slug-field message:
+        self.assertIn(
+            "letters, numbers, underscores or hyphens",
+            cm.exception.error_dict["slug"][0].message
+        )
+
+
+    def test_clean_undefined_parameters_raises(self):
+        # formula references `age` which is not in parameters or math
+        calc = Calculator(**{**self.valid_payload, "formula": "weight_kg + age"})
+        with self.assertRaises(ValidationError) as cm:
+            calc.full_clean()
+        self.assertIn("formula", cm.exception.error_dict)
+        msg = cm.exception.error_dict["formula"][0].message
+        self.assertIn("undefined parameters", msg)
+        self.assertIn("age", msg)
+
+
+    def test_save_auto_generates_slug_from_key(self):
+        calc = Calculator.objects.create(**self.valid_payload)
+        self.assertEqual(calc.slug, slugify(self.valid_payload["key"]))
+
+
+    def test_save_different_keys_produce_different_slugs(self):
+        c1 = Calculator.objects.create(**self.valid_payload)
+        payload2 = {**self.valid_payload, "key": "bmi-alt", "name": "BMI Alt"}
+        c2 = Calculator.objects.create(**payload2)
+        self.assertEqual(c1.slug, "bmi")
+        self.assertEqual(c2.slug, "bmi-alt")
+
+
+    def test_calculate_correctly(self):
+        calc = Calculator.objects.create(**self.valid_payload)
+        result = calc.calculate(weight_kg=70, height_m=1.75)
+        expected = 70 / (1.75 ** 2)
+        self.assertAlmostEqual(result, expected, places=6)
+
+
+    def test_calculate_missing_parameter_raises(self):
+        calc = Calculator.objects.create(**self.valid_payload)
+        with self.assertRaises(KeyError):
+            calc.calculate(weight_kg=70)  # height_m missing
+
+
+    def test_calculate_below_minimum_raises(self):
+        calc = Calculator.objects.create(**self.valid_payload)
+        with self.assertRaises(ValueError) as cm:
+            calc.calculate(weight_kg=5, height_m=1.75)  # weight_kg < min
+        self.assertIn("weight_kg below minimum", str(cm.exception))
+
+
+    def test_calculate_above_maximum_raises(self):
+        calc = Calculator.objects.create(**self.valid_payload)
+        with self.assertRaises(ValueError) as cm:
+            calc.calculate(weight_kg=70, height_m=5.0)  # height_m > max
+        self.assertIn("height_m above maximum", str(cm.exception))
+
+
+    def test_get_absolute_url_contains_slug(self):
+        calc = Calculator.objects.create(**self.valid_payload)
+        try:
+            url = calc.get_absolute_url()
+        except NoReverseMatch:
+            # fallback if you haven't wired up the named URL
+            url = f"/calculators/{calc.slug}/"
+        self.assertIn(calc.slug, url)
+        self.assertTrue(url.endswith(f"{calc.slug}/"))
+        
