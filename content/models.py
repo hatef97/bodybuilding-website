@@ -1,4 +1,4 @@
-import math, re
+import math``
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -371,139 +371,124 @@ class ExerciseGuide(models.Model):
 
 
 
-class ActiveCalculatorManager(models.Manager):
-    """Manager returning only active calculators."""
-    def get_queryset(self):
-        return super().get_queryset().filter(is_active=True)
-
-
-
-class Calculator(models.Model):
+class FitnessMeasurement(models.Model):
     """
-    Defines a fitness calculator (BMI, Body Fat, etc.) with:
-    - name & slug for URLs
-    - parameter schema in JSONField
-    - a Python 'formula' expression evaluated at runtime
+    A simple record of a user’s height & weight at a point in time.
+    As soon as you save height_cm & weight_kg, you get two auto‐computed properties:
+      1. BMI (Body Mass Index) = weight_kg / (height_m^2)
+      2. BSA (Body Surface Area) via the Mosteller formula = sqrt(height_cm * weight_kg / 3600)
     """
 
-    key = models.CharField(
-        max_length=50,
-        unique=True,
-        help_text="Unique identifier, e.g. 'bmi', 'body_fat'."
+    GENDER_MALE = "M"
+    GENDER_FEMALE = "F"
+    GENDER_CHOICES = [
+        (GENDER_MALE, "Male"),
+        (GENDER_FEMALE, "Female"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="fitness_measurements",
+        help_text="Which user this measurement belongs to."
     )
-    name = models.CharField(
-        max_length=100,
-        help_text="Human–readable name, e.g. 'Body Mass Index (BMI)'."
+
+    # Height in centimeters (must be positive)
+    height_cm = models.PositiveIntegerField(
+        help_text="Height in centimeters. (e.g. 175)",
     )
-    slug = models.SlugField(
-        max_length=60,
-        unique=True,
+
+    # Weight in kilograms (must be positive, can include decimals)
+    weight_kg = models.FloatField(
+        help_text="Weight in kilograms. (e.g. 70.5)",
+    )
+
+    # Optional: If you want to calculate body‐fat or BMR later, you need age/gender.
+    # For now, we include gender so that you can easily extend to other formulas.
+    gender = models.CharField(
+        max_length=1,
+        choices=GENDER_CHOICES,
         blank=True,
-        help_text="Auto–generated from key or name if blank."
+        help_text="Optional: needed for some body‐fat or BMR calculations."
     )
-
-    description = models.TextField(
+    date_of_birth = models.DateField(
         blank=True,
-        help_text="Explain what this calculator does."
-    )
-
-    parameters = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text=(
-            "Schema for inputs, e.g.:\n"
-            "{ 'weight_kg': {'label':'Weight (kg)','min':30,'max':300,'step':0.1},\n"
-            "  'height_m': {'label':'Height (m)','min':1.0,'max':2.5,'step':0.01} }\n"
-        )
-    )
-
-    formula = models.TextField(
-        help_text=(
-            "Python expression using parameter names, e.g.:\n"
-            "'weight_kg / (height_m ** 2)'"
-        )
-    )
-
-    is_active = models.BooleanField(
-        default=True,
-        help_text="Uncheck to disable this calculator."
+        null=True,
+        help_text="Optional: needed for age‐dependent calculators (e.g. BMR)."
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # Managers
-    objects = models.Manager()
-    active = ActiveCalculatorManager()
-
     class Meta:
-        ordering = ['name']
-        indexes = [
-            models.Index(fields=['slug']),
-            models.Index(fields=['key']),
-        ]
-        verbose_name = "Calculator"
-        verbose_name_plural = "Calculators"
+        ordering = ["-created_at"]
+        verbose_name = "Fitness Measurement"
+        verbose_name_plural = "Fitness Measurements"
 
     def __str__(self):
-        return self.name
+        return f"{self.user.username} @ {self.height_cm}cm / {self.weight_kg}kg (on {self.created_at.date()})"
 
     def clean(self):
-        # 1) Syntax-check only via compile()
-        try:
-            compile(self.formula, '<formula>', 'eval')
-        except SyntaxError as e:
-            raise ValidationError({'formula': f"Invalid Python expression: {e}"})
-
-        # 2) Slug must be URL-friendly if provided
-        if self.slug and self.slug != slugify(self.slug):
-            raise ValidationError({'slug': "Slug must be URL-friendly (letters, numbers or hyphens)."})
-
-        # 3) Find all names in the formula, then check against allowed
-        var_names = set(re.findall(r'\b[a-zA-Z_]\w*\b', self.formula))
-        allowed = set(self.parameters.keys()) | set(dir(math))
-        missing = var_names - allowed
-        if missing:
-            names = ", ".join(sorted(missing))
-            raise ValidationError({
-                'formula': f"Formula refers to undefined parameters: {names}"
-            })
-
-    def save(self, *args, **kwargs):
-        # Auto–slug from key if missing
-        if not self.slug:
-            base = slugify(self.key)[:55]
-            slug = base
-            n = 1
-            while Calculator.objects.filter(slug=slug).exists():
-                slug = f"{base}-{n}"
-                n += 1
-            self.slug = slug
-
-        super().save(*args, **kwargs)
-
-    def calculate(self, **inputs):
         """
-        Evaluate the formula with given inputs.
-        - Only math module and provided inputs are in scope.
-        - Raises KeyError or ValueError on missing/invalid inputs.
+        Ensure height_cm and weight_kg are positive.
+        Optionally: if date_of_birth is given, it must be in the past.
         """
-        # Validate inputs
-        for name, schema in self.parameters.items():
-            if name not in inputs:
-                raise KeyError(f"Missing parameter: {name}")
-            val = inputs[name]
-            minv = schema.get('min')
-            maxv = schema.get('max')
-            if minv is not None and val < minv:
-                raise ValueError(f"{name} below minimum {minv}")
-            if maxv is not None and val > maxv:
-                raise ValueError(f"{name} above maximum {maxv}")
+        if self.height_cm <= 0:
+            raise ValidationError({"height_cm": "Height must be a positive integer."})
+        if self.weight_kg <= 0:
+            raise ValidationError({"weight_kg": "Weight must be a positive number."})
 
-        # Safe evaluation context
-        safe_locals = {**{k: inputs[k] for k in self.parameters}, 'math': math}
-        return eval(self.formula, {"__builtins__": {}}, safe_locals)
+        if self.date_of_birth:
+            if self.date_of_birth >= self.created_at.date():
+                raise ValidationError({"date_of_birth": "Date of birth must be in the past."})
+
+    @property
+    def height_m(self) -> float:
+        """
+        Convert height in cm to meters (e.g. 175 cm → 1.75 m).
+        """
+        return self.height_cm / 100.0
+
+    @property
+    def bmi(self) -> float:
+        """
+        Body Mass Index = weight_kg ÷ (height_m)^2.
+        Returns a float with two decimal places.
+        """
+        h = self.height_m
+        if h <= 0:
+            return 0.0
+        return round(self.weight_kg / (h * h), 2)
+
+    @property
+    def bmi_category(self) -> str:
+        """
+        Return a text category based on WHO BMI cutoffs.
+        (You can adjust these ranges if you prefer different thresholds.)
+        """
+        val = self.bmi
+        if val < 18.5:
+            return "Underweight"
+        if val < 25:
+            return "Normal weight"
+        if val < 30:
+            return "Overweight"
+        return "Obese"
+
+    @property
+    def bsa(self) -> float:
+        """
+        Body Surface Area (Mosteller formula) = sqrt( (height_cm × weight_kg) / 3600 )
+        Returns a float rounded to two decimal places.
+        """
+        return round(math.sqrt((self.height_cm * self.weight_kg) / 3600.0), 2)
 
     def get_absolute_url(self):
-        """URL to calculator detail (for interactive forms)."""
-        return reverse('content:calculator-detail', kwargs={'slug': self.slug})
+        """
+        Return a URL to a “detail” page (if you wire one up).
+        Fallback: /fitness/<pk>/
+        """
+        try:
+            return reverse("fitness:measurement-detail", kwargs={"pk": self.pk})
+        except Exception:
+            return f"/fitness/{self.pk}/"
