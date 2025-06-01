@@ -1,15 +1,13 @@
 import math
-import re
-
-from datetime import timedelta
+from datetime import timedelta, date
 
 from django.test import TestCase
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.utils.text import slugify
-from django.urls import NoReverseMatch
+from django.urls import NoReverseMatch, reverse
 
-from content.models import Article, Video, ExerciseGuide, Calculator, ActiveCalculatorManager
+from content.models import Article, Video, ExerciseGuide, FitnessMeasurement
 from core.models import CustomUser as User
 
 
@@ -331,3 +329,218 @@ class ExerciseGuideModelTests(TestCase):
         """
         with self.assertRaises(NoReverseMatch):
             self.guide1.get_absolute_url()
+
+
+
+class FitnessMeasurementModelTests(TestCase):
+    
+    def setUp(self):
+        # Create a test user
+        self.user = User.objects.create_user(
+            username="testuser", email="test@example.com", password="password123"
+        )
+        # A known past date for date_of_birth tests
+        self.past_date = timezone.now().date() - timedelta(days=365 * 25)  # 25 years ago
+
+
+    def test_str_contains_user_height_weight_and_date(self):
+        """
+        __str__ should include username, height_cm, weight_kg, and the date portion of created_at.
+        """
+        m = FitnessMeasurement.objects.create(
+            user=self.user,
+            height_cm=175,
+            weight_kg=70.0,
+        )
+        text = str(m)
+        # It should contain username
+        self.assertIn(self.user.username, text)
+        # It should contain height and weight
+        self.assertIn("175cm", text)
+        self.assertIn("70.0kg", text)
+        # It should contain the created date (YYYY-MM-DD)
+        created_str = m.created_at.date().isoformat()
+        self.assertIn(created_str, text)
+
+
+    def test_height_m_property(self):
+        """
+        height_m should return height_cm divided by 100.
+        """
+        m = FitnessMeasurement(user=self.user, height_cm=180, weight_kg=75.0)
+        # Without saving, height_m still works
+        self.assertEqual(m.height_m, 1.80)
+        # Even if height_cm changes
+        m.height_cm = 150
+        self.assertEqual(m.height_m, 1.50)
+
+
+    def test_bmi_computation_and_rounding(self):
+        """
+        BMI = weight_kg / (height_m ** 2), rounded to two decimals.
+        """
+        # height: 180 cm -> 1.8 m; weight: 80 kg -> BMI = 80 / (1.8^2) = 24.691...
+        m = FitnessMeasurement.objects.create(
+            user=self.user,
+            height_cm=180,
+            weight_kg=80.0,
+        )
+        expected_bmi = round(80.0 / (1.8 * 1.8), 2)
+        self.assertAlmostEqual(m.bmi, expected_bmi)
+        # If height_m is zero (invalid), bmi property should return 0.0
+        m_zero = FitnessMeasurement(user=self.user, height_cm=0, weight_kg=50.0)
+        # Manually set height_cm to zero and call bmi
+        m_zero.height_cm = 0
+        self.assertEqual(m_zero.height_m, 0.0)
+        self.assertEqual(m_zero.bmi, 0.0)
+
+
+    def test_bmi_category_ranges(self):
+        """
+        Given a BMI, bmi_category should map to WHO categories.
+        """
+        # Underweight: BMI < 18.5
+        m1 = FitnessMeasurement(
+            user=self.user, height_cm=170, weight_kg=50.0
+        )  # 50 / (1.7^2) ≈ 17.30
+        self.assertEqual(m1.bmi_category, "Underweight")
+
+        # Normal weight: 18.5 <= BMI < 25
+        m2 = FitnessMeasurement(
+            user=self.user, height_cm=170, weight_kg=65.0
+        )  # ≈22.49
+        self.assertEqual(m2.bmi_category, "Normal weight")
+
+        # Overweight: 25 <= BMI < 30
+        m3 = FitnessMeasurement(
+            user=self.user, height_cm=170, weight_kg=77.0
+        )  # ≈26.64
+        self.assertEqual(m3.bmi_category, "Overweight")
+
+        # Obese: BMI >= 30
+        m4 = FitnessMeasurement(
+            user=self.user, height_cm=160, weight_kg=90.0
+        )  # ≈35.16
+        self.assertEqual(m4.bmi_category, "Obese")
+
+
+    def test_bsa_computation(self):
+        """
+        BSA (Mosteller formula) = sqrt((height_cm * weight_kg) / 3600), rounded to two decimals.
+        """
+        m = FitnessMeasurement.objects.create(
+            user=self.user,
+            height_cm=180,
+            weight_kg=80.0,
+        )
+        expected_bsa = round(math.sqrt((180 * 80.0) / 3600.0), 2)
+        self.assertAlmostEqual(m.bsa, expected_bsa)
+
+        m2 = FitnessMeasurement(user=self.user, height_cm=0, weight_kg=0)
+        # 0/3600 = 0, sqrt(0) = 0, rounded = 0.0
+        m2.height_cm = 0
+        m2.weight_kg = 0.0
+        self.assertEqual(m2.bsa, 0.0)
+
+
+    def test_clean_rejects_nonpositive_height(self):
+        """
+        clean() should raise ValidationError if height_cm <= 0.
+        """
+        m = FitnessMeasurement(user=self.user, height_cm=0, weight_kg=60.0)
+        with self.assertRaises(ValidationError) as cm:
+            m.full_clean()
+        self.assertIn("height_cm", cm.exception.message_dict)
+        self.assertIn("positive integer", cm.exception.message_dict["height_cm"][0])
+
+
+    def test_clean_rejects_nonpositive_weight(self):
+        """
+        clean() should raise ValidationError if weight_kg <= 0.
+        """
+        m = FitnessMeasurement(user=self.user, height_cm=170, weight_kg=0.0)
+        with self.assertRaises(ValidationError) as cm:
+            m.full_clean()
+        self.assertIn("weight_kg", cm.exception.message_dict)
+        self.assertIn("positive number", cm.exception.message_dict["weight_kg"][0])
+
+
+    def test_clean_rejects_date_of_birth_in_future_or_today(self):
+        """
+        clean() should raise if date_of_birth is today or in the future.
+        """
+        # Case 1: date_of_birth == today
+        today = timezone.now().date()
+        m1 = FitnessMeasurement(
+            user=self.user,
+            height_cm=170,
+            weight_kg=60.0,
+            date_of_birth=today
+        )
+        with self.assertRaises(ValidationError) as cm1:
+            m1.full_clean()
+        # error_dict["date_of_birth"][0] should now be a plain string containing "in the past"
+        err_msg1 = cm1.exception.error_dict["date_of_birth"][0]
+        self.assertIn("Date of birth must be in the past.", err_msg1)
+
+        # Case 2: date_of_birth in the future
+        tomorrow = today + timedelta(days=1)
+        m2 = FitnessMeasurement(
+            user=self.user,
+            height_cm=170,
+            weight_kg=60.0,
+            date_of_birth=tomorrow
+        )
+        with self.assertRaises(ValidationError) as cm2:
+            m2.full_clean()
+        err_msg2 = cm2.exception.error_dict["date_of_birth"][0]
+        self.assertIn("Date of birth must be in the past.", err_msg2)
+
+
+    def test_get_absolute_url_fallbacks_to_pk(self):
+        """
+        If no named URL 'fitness:measurement-detail' exists,
+        get_absolute_url() should return '/fitness/<pk>/'.
+        """
+        m = FitnessMeasurement.objects.create(
+            user=self.user,
+            height_cm=165,
+            weight_kg=55.0,
+        )
+        # Attempt to reverse; expecting NoReverseMatch inside, so fallback
+        url = m.get_absolute_url()
+        expected = f"/fitness/{m.pk}/"
+        self.assertEqual(url, expected)
+
+
+    def test_created_at_and_updated_at_auto_set(self):
+        """
+        Ensure that created_at and updated_at are automatically populated.
+        """
+        before = timezone.now()
+        m = FitnessMeasurement.objects.create(
+            user=self.user,
+            height_cm=180,
+            weight_kg=80.0,
+        )
+        self.assertIsNotNone(m.created_at)
+        self.assertIsNotNone(m.updated_at)
+        # Both timestamps should be >= the moment before creation
+        self.assertGreaterEqual(m.created_at, before)
+        self.assertGreaterEqual(m.updated_at, before)
+
+
+    def test_updating_record_updates_updated_at(self):
+        """
+        Changing a record and saving it again should update updated_at.
+        """
+        m = FitnessMeasurement.objects.create(
+            user=self.user,
+            height_cm=170,
+            weight_kg=60.0,
+        )
+        original_updated = m.updated_at
+        # Sleep a fraction to ensure a later timestamp (optional)
+        m.weight_kg = 62.0
+        m.save()
+        self.assertGreater(m.updated_at, original_updated)

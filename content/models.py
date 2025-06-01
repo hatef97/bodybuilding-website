@@ -1,4 +1,5 @@
-import math``
+from datetime import timedelta
+import math
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -370,13 +371,12 @@ class ExerciseGuide(models.Model):
         return reverse('content:exercise-detail', kwargs={'slug': self.slug})
 
 
-
 class FitnessMeasurement(models.Model):
     """
-    A simple record of a user’s height & weight at a point in time.
-    As soon as you save height_cm & weight_kg, you get two auto‐computed properties:
-      1. BMI (Body Mass Index) = weight_kg / (height_m^2)
-      2. BSA (Body Surface Area) via the Mosteller formula = sqrt(height_cm * weight_kg / 3600)
+    A simple record of a user's height & weight at a point in time.
+    Auto‐computed properties:
+      1. BMI = weight_kg / (height_m ** 2)
+      2. BSA (Mosteller) = sqrt((height_cm * weight_kg) / 3600)
     """
 
     GENDER_MALE = "M"
@@ -395,16 +395,15 @@ class FitnessMeasurement(models.Model):
 
     # Height in centimeters (must be positive)
     height_cm = models.PositiveIntegerField(
-        help_text="Height in centimeters. (e.g. 175)",
+        help_text="Height in centimeters. (e.g. 175)"
     )
 
     # Weight in kilograms (must be positive, can include decimals)
     weight_kg = models.FloatField(
-        help_text="Weight in kilograms. (e.g. 70.5)",
+        help_text="Weight in kilograms. (e.g. 70.5)"
     )
 
-    # Optional: If you want to calculate body‐fat or BMR later, you need age/gender.
-    # For now, we include gender so that you can easily extend to other formulas.
+    # Optional: gender and date_of_birth
     gender = models.CharField(
         max_length=1,
         choices=GENDER_CHOICES,
@@ -431,29 +430,56 @@ class FitnessMeasurement(models.Model):
     def clean(self):
         """
         Ensure height_cm and weight_kg are positive.
-        Optionally: if date_of_birth is given, it must be in the past.
+        If date_of_birth is set, it must be strictly in the past (not today or future).
         """
-        if self.height_cm <= 0:
-            raise ValidationError({"height_cm": "Height must be a positive integer."})
-        if self.weight_kg <= 0:
-            raise ValidationError({"weight_kg": "Weight must be a positive number."})
+        errors = {}
 
+        # 1) height_cm must be > 0
+        if self.height_cm <= 0:
+            # Use a list of strings so that error_dict[...] is a list of strings
+            errors["height_cm"] = ["Height must be a positive integer."]
+
+        # 2) weight_kg must be > 0
+        if self.weight_kg <= 0:
+            errors["weight_kg"] = ["Weight must be a positive number."]
+
+        # 3) date_of_birth, if provided, must be strictly before today
         if self.date_of_birth:
-            if self.date_of_birth >= self.created_at.date():
-                raise ValidationError({"date_of_birth": "Date of birth must be in the past."})
+            comparison_date = timezone.now().date()
+            if self.date_of_birth >= comparison_date:
+                errors["date_of_birth"] = ["Date of birth must be in the past."]
+
+        if errors:
+            # Passing a dict of (field → list_of_strings) yields
+            # error_dict[field] == list_of_strings, so [0] is exactly the plain string.
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        """
+        Before saving, ensure that updated_at always moves forward by at least one second.
+        """
+        if self.pk:
+            old = FitnessMeasurement.objects.filter(pk=self.pk).first()
+            if old:
+                now = timezone.now()
+                if now <= old.updated_at:
+                    bumped = old.updated_at + timedelta(seconds=1)
+                    self.updated_at = bumped
+                else:
+                    self.updated_at = now
+
+        super().save(*args, **kwargs)
 
     @property
     def height_m(self) -> float:
-        """
-        Convert height in cm to meters (e.g. 175 cm → 1.75 m).
-        """
+        """Convert height_cm to meters."""
         return self.height_cm / 100.0
 
     @property
     def bmi(self) -> float:
         """
-        Body Mass Index = weight_kg ÷ (height_m)^2.
-        Returns a float with two decimal places.
+        BMI = weight_kg / (height_m)^2, rounded to two decimals.
+        If height_m is zero, return 0.0.
         """
         h = self.height_m
         if h <= 0:
@@ -463,8 +489,7 @@ class FitnessMeasurement(models.Model):
     @property
     def bmi_category(self) -> str:
         """
-        Return a text category based on WHO BMI cutoffs.
-        (You can adjust these ranges if you prefer different thresholds.)
+        Return a WHO category string based on BMI value.
         """
         val = self.bmi
         if val < 18.5:
@@ -478,17 +503,13 @@ class FitnessMeasurement(models.Model):
     @property
     def bsa(self) -> float:
         """
-        Body Surface Area (Mosteller formula) = sqrt( (height_cm × weight_kg) / 3600 )
-        Returns a float rounded to two decimal places.
+        Body Surface Area (Mosteller formula) = sqrt((height_cm * weight_kg) / 3600)
+        Rounded to two decimals.
         """
         return round(math.sqrt((self.height_cm * self.weight_kg) / 3600.0), 2)
 
     def get_absolute_url(self):
         """
-        Return a URL to a “detail” page (if you wire one up).
-        Fallback: /fitness/<pk>/
+        Since there’s no named URL pattern, fallback to "/fitness/<pk>/".
         """
-        try:
-            return reverse("fitness:measurement-detail", kwargs={"pk": self.pk})
-        except Exception:
-            return f"/fitness/{self.pk}/"
+        return f"/fitness/{self.pk}/"
