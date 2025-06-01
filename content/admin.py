@@ -1,9 +1,14 @@
+import math
+from datetime import timedelta
+
 from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse
 from django.utils import timezone
+from django.conf import settings
 
-from .models import Article, Video, ExerciseGuide
+from .models import Article, Video, ExerciseGuide, FitnessMeasurement
+from core.models import CustomUser as User
 
 
 
@@ -276,3 +281,179 @@ class ExerciseGuideAdmin(admin.ModelAdmin):
             'fields': ('created_at', 'updated_at'),
         }),
     )
+
+
+
+@admin.register(FitnessMeasurement)
+class FitnessMeasurementAdmin(admin.ModelAdmin):
+    """
+    Admin interface for FitnessMeasurement:
+    - list_display shows user, height, weight, BMI, BSA, category, date_of_birth, gender, created/updated.
+    - list_filter for user, gender, and date_of_birth.
+    - search_fields to find by user username/email.
+    - readonly_fields for computed properties and timestamps.
+    - fieldsets to group core vs. computed vs. metadata.
+    """
+
+    # Columns displayed in the changelist
+    list_display = (
+        "id",
+        "user_link",
+        "height_cm",
+        "weight_kg",
+        "height_m_display",
+        "bmi_display",
+        "bmi_category_display",
+        "bsa_display",
+        "gender",
+        "date_of_birth",
+        "created_at",
+        "updated_at",
+    )
+
+    # Filters in the right sidebar
+    list_filter = (
+        "gender",
+        "date_of_birth",
+        "user__username",
+    )
+
+    # Searchable by user’s username or email
+    search_fields = (
+        "user__username",
+        "user__email",
+    )
+
+    # Fields that should be read-only in the detail/edit form
+    readonly_fields = (
+        "height_m_display",
+        "bmi_display",
+        "bmi_category_display",
+        "bsa_display",
+        "created_at",
+        "updated_at",
+    )
+
+    # Group fields into fieldsets for clarity
+    fieldsets = (
+        (
+            "Core Measurement Data",
+            {
+                "fields": (
+                    "user",
+                    ("height_cm", "weight_kg"),
+                    "gender",
+                    "date_of_birth",
+                )
+            },
+        ),
+        (
+            "Computed Properties (Read‐Only)",
+            {
+                "fields": (
+                    "height_m_display",
+                    "bmi_display",
+                    "bmi_category_display",
+                    "bsa_display",
+                ),
+                "description": "These values are auto‐computed from height_cm and weight_kg.",
+            },
+        ),
+        (
+            "Timestamps (Read‐Only)",
+            {
+                "fields": (
+                    "created_at",
+                    "updated_at",
+                )
+            },
+        ),
+    )
+
+    ordering = ("-created_at",)
+
+    def get_queryset(self, request):
+        """
+        Override to prefetch related user to avoid an extra query per row in list_display.
+        """
+        qs = super().get_queryset(request)
+        return qs.select_related("user")
+
+    def user_link(self, obj):
+        """
+        Show a clickable link to the related User’s admin change page.
+        """
+        if obj.user:
+            url = reverse(
+                "admin:%s_%s_change"
+                % (User._meta.app_label, User._meta.model_name),
+                args=[obj.user.pk],
+            )
+            return format_html('<a href="{}">{}</a>', url, obj.user.username)
+        return "-"
+    user_link.short_description = "User"
+    user_link.admin_order_field = "user__username"
+
+    def height_m_display(self, obj):
+        """
+        Display height in meters (read‐only). Guard against None.
+        """
+        if obj.height_cm is None:
+            return "-"
+        # Convert to meters and format two decimal places
+        height_m = obj.height_cm / 100.0
+        return f"{height_m:.2f} m"
+    height_m_display.short_description = "Height (m)"
+    height_m_display.admin_order_field = "height_cm"
+
+    def bmi_display(self, obj):
+        """
+        Display BMI = weight_kg / (height_m^2), rounded to two decimals.
+        Guard against missing height or weight.
+        """
+        if obj.height_cm is None or obj.weight_kg is None:
+            return "-"
+        height_m = obj.height_cm / 100.0
+        if height_m <= 0:
+            return "0.00"
+        bmi_val = obj.weight_kg / (height_m * height_m)
+        return f"{bmi_val:.2f}"
+    bmi_display.short_description = "BMI"
+    # Order by weight_kg roughly approximates BMI sorting
+    bmi_display.admin_order_field = "weight_kg"
+
+    def bmi_category_display(self, obj):
+        """
+        Display BMI category (Underweight, Normal, Overweight, Obese).
+        Guard against missing height or weight.
+        """
+        if obj.height_cm is None or obj.weight_kg is None:
+            return "-"
+        height_m = obj.height_cm / 100.0
+        if height_m <= 0:
+            return "-"
+        bmi_val = obj.weight_kg / (height_m * height_m)
+        if bmi_val < 18.5:
+            return "Underweight"
+        if bmi_val < 25:
+            return "Normal weight"
+        if bmi_val < 30:
+            return "Overweight"
+        return "Obese"
+    bmi_category_display.short_description = "BMI Category"
+    bmi_category_display.admin_order_field = "weight_kg"
+
+    def bsa_display(self, obj):
+        """
+        Display BSA (Mosteller) = sqrt((height_cm * weight_kg) / 3600), rounded to two decimals.
+        Guard against missing height or weight.
+        """
+        if obj.height_cm is None or obj.weight_kg is None:
+            return "-"
+        # If either is zero, formula yields 0.0
+        if obj.height_cm <= 0 or obj.weight_kg <= 0:
+            return "0.00 m²"
+        bsa_val = math.sqrt((obj.height_cm * obj.weight_kg) / 3600.0)
+        return f"{bsa_val:.2f} m²"
+    bsa_display.short_description = "BSA"
+    bsa_display.admin_order_field = "height_cm"
