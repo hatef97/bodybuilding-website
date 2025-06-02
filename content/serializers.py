@@ -1,12 +1,10 @@
 from django.utils import timezone
-from django.contrib.auth import get_user_model
 
 from rest_framework import serializers
 from rest_framework.reverse import reverse as drf_reverse
 
-from .models import Article
 from core.models import CustomUser as User
-
+from .models import Article
 
 
 class ArticleSerializer(serializers.ModelSerializer):
@@ -30,9 +28,7 @@ class ArticleSerializer(serializers.ModelSerializer):
     )
 
     # 2. Represent `author` as the username (read‐only).
-    author = serializers.StringRelatedField(
-        read_only=True
-    )
+    author = serializers.StringRelatedField(read_only=True)
 
     # 3. Expose a clickable absolute URL for the featured image.
     featured_image_url = serializers.SerializerMethodField(read_only=True)
@@ -51,11 +47,13 @@ class ArticleSerializer(serializers.ModelSerializer):
     # Write‐only / input‐specific fields
     # -------------------------
 
-    # 1. On writes, accept `author_id` (primary key) to associate an existing user.
+    # On writes, accept `author_id` (primary key) to associate an existing user.
+    # Set required=False so we can catch missing author_id in validate().
     author_id = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(),
         source="author",
         write_only=True,
+        required=False,
         help_text="ID of the user who authored this article."
     )
 
@@ -99,18 +97,26 @@ class ArticleSerializer(serializers.ModelSerializer):
     # -------------------------
     def validate(self, data):
         """
-        Enforce that if `is_published` is True, then `published_at` must be provided.
-        If the client didn’t supply `published_at`, but they set `is_published=True`,
-        automatically set `published_at` now.
+        1. If creating (self.instance is None) and no `author_id` was provided,
+           raise ValidationError under key 'author'.
+
+        2. Enforce that if `is_published` is True, then `published_at` must be provided.
+           If the client didn’t supply `published_at`, but they set `is_published=True`,
+           automatically set `published_at` now.
         """
+        # 1) Check for missing author_id on creation
+        if self.instance is None:
+            if "author" not in data:
+                raise serializers.ValidationError({"author": "This field is required."})
+
+        # 2) Handle published_at auto‐population
         is_published = data.get("is_published", None)
         published_at = data.get("published_at", None)
 
-        # If the client is attempting to publish but didn't supply a timestamp,
-        # auto‐populate with current time.
         if is_published:
             if not published_at:
                 data["published_at"] = timezone.now()
+
         return data
 
     # -------------------------
@@ -134,7 +140,6 @@ class ArticleSerializer(serializers.ModelSerializer):
         Make sure slug generation logic from the model still runs,
         and return the newly created Article.
         """
-        # Pop out any nested data if needed; here, everything is flat except author
         article = Article.objects.create(**validated_data)
         return article
 
