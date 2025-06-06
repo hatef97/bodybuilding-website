@@ -11,9 +11,9 @@ from rest_framework.routers import DefaultRouter
 from rest_framework.test import APIRequestFactory
 
 from core.models import CustomUser as User
-from content.models import Article
-from content.serializers import ArticleSerializer
-from content.views import ArticleViewSet
+from content.models import Article, Video
+from content.serializers import ArticleSerializer, VideoSerializer
+from content.views import ArticleViewSet, VideoViewSet
 
 
 
@@ -307,3 +307,355 @@ class ArticleSerializerTests(TestCase):
         self.assertIn("title", meta_fields)
         self.assertIn("excerpt", meta_fields)
         self.assertIn("content", meta_fields)
+
+
+
+# ---------- Test URLConf for HyperlinkedIdentityField ----------
+router = DefaultRouter()
+router.register(r"videos", VideoViewSet, basename="video")
+
+urlpatterns = [
+    path("", include(router.urls)),
+]
+
+
+
+@override_settings(ROOT_URLCONF=__name__)
+class VideoSerializerTests(TestCase):
+    
+    def setUp(self):
+        # Create users
+        self.user = User.objects.create_user(
+            username="creator", email="creator@example.com", password="secret"
+        )
+        self.other = User.objects.create_user(
+            username="other", email="other@example.com", password="password"
+        )
+
+        # API request factory
+        self.factory = APIRequestFactory()
+
+        # Draft video (no slug, embed_code, or published_at)
+        self.draft_video = Video.objects.create(
+            author=self.user,
+            title="Draft Video",
+            slug="",  # will be generated on save
+            url="https://example.com/video.mp4",
+            embed_code="",
+            description="Draft description",
+            status=Video.STATUS_DRAFT,
+            is_published=False,
+        )
+
+        # Published video (slug auto, published_at set)
+        self.published_video = Video.objects.create(
+            author=self.user,
+            title="Published Video",
+            slug="",  # let save() generate
+            url="https://example.com/vid.mp4",
+            embed_code="",
+            description="Published description",
+            status=Video.STATUS_PUBLISHED,
+            is_published=True,
+            published_at=timezone.now() - timedelta(days=1),
+        )
+
+
+    def test_serialize_video_fields(self):
+        """
+        Serializing an existing published video should include:
+        - 'url' as hyperlinked identity to /videos/{slug}/
+        - 'id', 'slug', 'author' (str), 'title', 'description', 'video url', 'embed_code', 
+          'thumbnail_url' (None), 'duration', 'status', 'is_published', 'published_at',
+          'created_at', 'updated_at'.
+        - 'author_id' must NOT appear.
+        """
+        request = self.factory.get("/videos/")
+        serializer = VideoSerializer(
+            instance=self.published_video, context={"request": request}
+        )
+        data = serializer.data
+
+        # Hyperlinked detail URL
+        detail_url = reverse("video-detail", kwargs={"slug": self.published_video.slug})
+        self.assertEqual(data["detail_url"], f"http://testserver{detail_url}")
+
+        # ID and slug
+        self.assertEqual(data["id"], self.published_video.id)
+        self.assertEqual(data["slug"], self.published_video.slug)
+
+        # Author string
+        self.assertEqual(data["author"], str(self.user))
+
+        # Core fields
+        self.assertEqual(data["title"], "Published Video")
+        self.assertEqual(data["description"], "Published description")
+        self.assertEqual(data["detail_url"], f"http://testserver{detail_url}")  # hyperlink, not model URL
+        self.assertEqual(data["embed_code"], "")
+        self.assertIsNone(data["thumbnail_url"])
+
+        # Duration default None
+        self.assertIsNone(data["duration"])
+
+        # Status / publication
+        self.assertEqual(data["status"], Video.STATUS_PUBLISHED)
+        self.assertTrue(data["is_published"])
+        self.assertIsNotNone(data["published_at"])
+
+        # Timestamps
+        self.assertIn("created_at", data)
+        self.assertIn("updated_at", data)
+
+        # Write-only should not show
+        self.assertNotIn("author_id", data)
+
+
+    def test_deserialize_create_with_url_sets_slug_and_published_at(self):
+        """
+        Creating with only 'url' (no embed_code) and is_published=True should:
+          - Validate because url present
+          - Auto-generate slug from title
+          - Auto-set published_at
+        """
+        payload = {
+            "author_id": self.user.id,
+            "title": "New Video",
+            "description": "Some desc",
+            "url": "https://example.com/new.mp4",
+            "embed_code": "",
+            "status": Video.STATUS_PUBLISHED,
+            "is_published": True,
+        }
+        request = self.factory.post("/videos/")
+        serializer = VideoSerializer(data=payload, context={"request": request})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        video = serializer.save()
+
+        # Slug must start with 'new-video'
+        self.assertTrue(video.slug.startswith("new-video"))
+
+        # published_at auto-set
+        self.assertIsNotNone(video.published_at)
+        self.assertAlmostEqual(video.published_at, timezone.now(), delta=timedelta(seconds=5))
+
+        # Author correctly set
+        self.assertEqual(video.author, self.user)
+
+
+    def test_deserialize_create_with_embed_only(self):
+        """
+        Creating with only 'embed_code' (no url) should also validate.
+        """
+        embed_html = "<iframe></iframe>"
+        payload = {
+            "author_id": self.user.id,
+            "title": "Embed Video",
+            "description": "Embed desc",
+            "url": "",
+            "embed_code": embed_html,
+            "status": Video.STATUS_DRAFT,
+            "is_published": False,
+        }
+        request = self.factory.post("/videos/")
+        serializer = VideoSerializer(data=payload, context={"request": request})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        video = serializer.save()
+        self.assertEqual(video.embed_code, embed_html)
+        self.assertEqual(video.url, "")  # URL field stored as blank
+        self.assertFalse(video.is_published)
+        self.assertIsNone(video.published_at)
+
+
+    def test_validation_requires_url_or_embed(self):
+        """
+        Attempt to create without url AND embed_code should raise ValidationError.
+        """
+        payload = {
+            "author_id": self.user.id,
+            "title": "Invalid Video",
+            "description": "No media",
+            "url": "",
+            "embed_code": "",
+            "status": Video.STATUS_DRAFT,
+            "is_published": False,
+        }
+        request = self.factory.post("/videos/")
+        serializer = VideoSerializer(data=payload, context={"request": request})
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("url", serializer.errors)
+
+
+    def test_update_toggle_publish_sets_published_at(self):
+        """
+        If updating draft->published without providing published_at, it must be set to now.
+        """
+        payload = {
+            "is_published": True,
+            "url": self.draft_video.url,   # supply the existing URL so validate() won’t fail
+        }
+        request = self.factory.patch(f"/videos/{self.draft_video.slug}/")
+        serializer = VideoSerializer(
+            instance=self.draft_video,
+            data=payload,
+            partial=True,
+            context={"request": request}
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        updated = serializer.save()
+        self.assertTrue(updated.is_published)
+        self.assertIsNotNone(updated.published_at)
+        self.assertGreaterEqual(updated.published_at, self.draft_video.created_at)
+
+
+    def test_slug_and_read_only_ignored_on_update(self):
+        """
+        Passing 'slug', 'created_at', or 'updated_at' in update payload must be ignored.
+        """
+        original_slug = self.draft_video.slug
+        orig_created = self.draft_video.created_at
+        orig_updated = self.draft_video.updated_at
+
+        future_time = (timezone.now() + timedelta(days=7)).isoformat()
+        payload = {
+            "slug": "fake-slug",
+            "created_at": future_time,
+            "updated_at": future_time,
+            "title": "Modified Title",
+            "url": self.draft_video.url  # include existing URL so validation passes
+        }
+        request = self.factory.put(f"/videos/{original_slug}/")
+        serializer = VideoSerializer(
+            instance=self.draft_video, data=payload, partial=True, context={"request": request}
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        updated = serializer.save()
+
+        # Slug unchanged
+        self.assertEqual(updated.slug, original_slug)
+        # created_at unchanged
+        self.assertEqual(updated.created_at, orig_created)
+        # updated_at should be newer but not equal to fake future
+        self.assertNotEqual(updated.updated_at, timezone.datetime.fromisoformat(future_time))
+        self.assertGreaterEqual(updated.updated_at, orig_updated)
+
+        # Title updated
+        self.assertEqual(updated.title, "Modified Title")
+
+
+    def test_thumbnail_url_included_if_thumbnail_present(self):
+        """
+        If thumbnail is uploaded, serializer must return absolute URL under 'thumbnail_url'.
+        """
+        # Create small in-memory GIF
+        gif = (
+            b"\x47\x49\x46\x38\x37\x61\x01\x00\x01\x00\x80\x00\x00\x00"
+            b"\x00\x00\xff\xff\xff\x21\xf9\x04\x01\x00\x00\x00\x00\x2c"
+            b"\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x44\x01\x00\x3b"
+        )
+        temp_thumbnail = SimpleUploadedFile(
+            name="thumb.gif",
+            content=gif,
+            content_type="image/gif"
+        )
+        video = Video.objects.create(
+            author=self.user,
+            title="Has Thumbnail",
+            slug="",  # autogenerated
+            url="https://example.com/x.mp4",
+            embed_code="",
+            description="Desc",
+            status=Video.STATUS_DRAFT,
+            is_published=False,
+            thumbnail=temp_thumbnail
+        )
+        request = self.factory.get("/videos/")
+        serializer = VideoSerializer(instance=video, context={"request": request})
+        data = serializer.data
+
+        self.assertIn("thumbnail_url", data)
+        self.assertTrue(data["thumbnail_url"].startswith("http://testserver"))
+
+
+    def test_author_field_and_author_id_behavior(self):
+        """
+        On serialization, 'author' equals str(user) and 'author_id' not shown.
+        On creation, passing 'author_id' associates the correct user.
+        """
+        request = self.factory.get("/videos/")
+        serializer = VideoSerializer(instance=self.published_video, context={"request": request})
+        data = serializer.data
+
+        self.assertEqual(data["author"], str(self.user))
+        self.assertNotIn("author_id", data)
+
+        # Create new video with other user
+        payload = {
+            "author_id": self.other.id,
+            "title": "Other's Video",
+            "description": "Some desc",
+            "url": "https://example.com/other.mp4",
+            "embed_code": "",
+            "status": Video.STATUS_DRAFT,
+            "is_published": False,
+        }
+        create_req = self.factory.post("/videos/")
+        create_serial = VideoSerializer(data=payload, context={"request": create_req})
+        self.assertTrue(create_serial.is_valid(), create_serial.errors)
+        new_video = create_serial.save()
+        self.assertEqual(new_video.author, self.other)
+
+
+    def test_validation_error_when_no_author_id_on_create(self):
+        """
+        Creating without 'author_id' should yield ValidationError under 'author'.
+        """
+        payload = {
+            "title": "No Author Video",
+            "description": "Desc",
+            "url": "https://example.com/noauthor.mp4",
+            "embed_code": "",
+            "status": Video.STATUS_DRAFT,
+            "is_published": False,
+        }
+        create_req = self.factory.post("/videos/")
+        serializer = VideoSerializer(data=payload, context={"request": create_req})
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("author_id", serializer.errors)
+
+
+    def test_read_only_url_field_cannot_be_overwritten(self):
+        """
+        Passing 'url' (hyperlinked field) in payload should not override hyperlink.
+        """
+        malicious_link = "http://malicious/override/"
+        payload = {
+            "author_id": self.user.id,
+            "title": "Override URL Video",
+            "description": "Desc",
+            "url": "https://example.com/valid.mp4",  # valid model URL
+            "embed_code": "",
+            "status": Video.STATUS_DRAFT,
+            "is_published": False,
+            "detail_url": malicious_link,  # attempt to override hyperlink
+        }
+        create_req = self.factory.post("/videos/")
+        serializer = VideoSerializer(data=payload, context={"request": create_req})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        video = serializer.save()
+
+        expected_detail = reverse("video-detail", kwargs={"slug": video.slug})
+        self.assertEqual(serializer.data["detail_url"], f"http://testserver{expected_detail}")
+        # Also ensure model URL is stored correctly
+        self.assertEqual(serializer.data["url"], "https://example.com/valid.mp4")
+
+
+    def test_search_and_filter_fields_present_in_serializer_meta(self):
+        """
+        Confirm that expected fields for filtering/search appear in Meta.fields.
+        """
+        meta_fields = VideoSerializer.Meta.fields
+        self.assertIn("status", meta_fields)
+        self.assertIn("is_published", meta_fields)
+        self.assertIn("title", meta_fields)
+        self.assertIn("description", meta_fields)
+        self.assertIn("url", meta_fields)
