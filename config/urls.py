@@ -26,6 +26,7 @@ urlpatterns = [
     path('nutrition/', include('nutrition.urls')),  # Include nutrion-related API URLs
     path('progress/', include('progress.urls')),    # Include progress-related API URLs
     path('community/', include('community.urls')),    # Include community-related API URLs
+    path('content/', include('content.urls')),    # Include content-related API URLs
 ]
 
 

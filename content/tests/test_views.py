@@ -1,7 +1,9 @@
 from datetime import timedelta
+import pprint
 
+from django.conf import settings
 from django.test import override_settings
-from django.urls import include, path, reverse
+from django.urls import include, path, reverse, get_resolver
 from django.utils import timezone
 
 from rest_framework import status
@@ -9,9 +11,236 @@ from rest_framework.routers import DefaultRouter
 from rest_framework.test import APITestCase, APIRequestFactory
 
 from core.models import CustomUser as User
-from content.models import Video
-from content.serializers import VideoSerializer
-from content.views import VideoViewSet
+from content.models import Video, Article
+from content.serializers import VideoSerializer, ArticleSerializer
+from content.views import VideoViewSet, ArticleViewSet
+
+
+
+class ArticleViewSetTests(APITestCase):
+    
+    def setUp(self):
+        # Create users
+        self.user1 = User.objects.create_user(
+            username="alice", email="alice@example.com", password="pass"
+        )
+        self.user2 = User.objects.create_user(
+            username="bob", email="bob@example.com", password="pass"
+        )
+        self.staff = User.objects.create_user(
+            username="admin", email="admin@example.com", password="pass", is_staff=True
+        )
+
+        # A draft for alice
+        self.draft = Article.objects.create(
+            author=self.user1,
+            title="Draft Article",
+            excerpt="Draft excerpt",
+            content="Draft content",
+            status=Article.STATUS_DRAFT,
+            is_published=False,
+        )
+
+        # Two published for alice
+        self.old = Article.objects.create(
+            author=self.user1,
+            title="Old Pub",
+            excerpt="Old excerpt",
+            content="Old content",
+            status=Article.STATUS_PUBLISHED,
+            is_published=True,
+            published_at=timezone.now() - timedelta(days=5),
+        )
+        self.new = Article.objects.create(
+            author=self.user1,
+            title="New Pub",
+            excerpt="New excerpt",
+            content="New content",
+            status=Article.STATUS_PUBLISHED,
+            is_published=True,
+            published_at=timezone.now() - timedelta(days=1),
+        )
+
+        # Six more for recent() – only top 5 should return
+        for i in range(6):
+            Article.objects.create(
+                author=self.user1,
+                title=f"Recent {i}",
+                excerpt=f"Recent excerpt {i}",
+                content=f"Recent content {i}",
+                status=Article.STATUS_PUBLISHED,
+                is_published=True,
+                published_at=timezone.now() - timedelta(hours=i),
+            )
+
+        # One published for bob
+        self.bob_article = Article.objects.create(
+            author=self.user2,
+            title="Bob's Article",
+            excerpt="Bob excerpt",
+            content="Bob content",
+            status=Article.STATUS_PUBLISHED,
+            is_published=True,
+            published_at=timezone.now() - timedelta(days=2),
+        )
+
+
+    def test_list_articles(self):
+        url = reverse("article-list")
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(resp.data), Article.objects.count())
+
+
+    def test_retrieve_article(self):
+        url = reverse("article-detail", kwargs={"slug": self.new.slug})
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["slug"], self.new.slug)
+        self.assertEqual(resp.data["title"], self.new.title)
+
+
+    def test_filter_by_is_published(self):
+        url = reverse("article-list") + "?is_published=True"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        expected = Article.objects.filter(is_published=True).count()
+        self.assertEqual(len(resp.data), expected)
+
+
+    def test_filter_by_author_username(self):
+        url = reverse("article-list") + f"?author__username={self.user1.username}"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        for art in resp.data:
+            self.assertEqual(art["author"], str(self.user1))
+
+
+    def test_filter_by_status(self):
+        url = reverse("article-list") + f"?status={Article.STATUS_DRAFT}"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        for art in resp.data:
+            self.assertEqual(art["status"], Article.STATUS_DRAFT)
+
+
+    def test_search_title_excerpt_content(self):
+        url = reverse("article-list") + "?search=New"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        slugs = {a["slug"] for a in resp.data}
+        self.assertIn(self.new.slug, slugs)
+        self.assertNotIn(self.draft.slug, slugs)
+
+
+    def test_ordering_by_published_at_ascending(self):
+        url = reverse("article-list") + "?ordering=published_at"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        dates = [
+            timezone.datetime.fromisoformat(a["published_at"].replace("Z", "+00:00"))
+            for a in resp.data
+            if a["published_at"]
+        ]
+        self.assertEqual(dates, sorted(dates))
+
+
+    def test_ordering_by_title(self):
+        url = reverse("article-list") + "?ordering=title"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        titles = [a["title"] for a in resp.data]
+        self.assertEqual(titles, sorted(titles))
+
+
+    def test_unauthenticated_create_forbidden(self):
+        url = reverse("article-list")
+        payload = {
+            "title": "Anon",
+            "excerpt": "Anon",
+            "content": "Anon",
+            "status": Article.STATUS_DRAFT,
+            "is_published": False,
+        }
+        resp = self.client.post(url, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+    def test_create_default_author_and_draft(self):
+        self.client.force_authenticate(user=self.user1)
+        url = reverse("article-list")
+        payload = {
+            "title": "Alice Draft",
+            "excerpt": "Draft",
+            "content": "Draft",
+            "status": Article.STATUS_DRAFT,
+            "is_published": False,
+        }
+        resp = self.client.post(url, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp.data["author"], str(self.user1))
+        self.assertIsNone(resp.data["published_at"])
+
+
+    def test_create_and_publish_sets_published_at(self):
+        self.client.force_authenticate(user=self.user1)
+        before = timezone.now()
+        url = reverse("article-list")
+        payload = {
+            "title": "Alice Publish",
+            "excerpt": "Publish",
+            "content": "Publish",
+            "status": Article.STATUS_PUBLISHED,
+            "is_published": True,
+        }
+        resp = self.client.post(url, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        pub_dt = timezone.datetime.fromisoformat(
+            resp.data["published_at"].replace("Z", "+00:00")
+        )
+        self.assertGreaterEqual(pub_dt, before)
+
+
+    def test_update_toggle_publish_sets_published_at(self):
+        self.client.force_authenticate(user=self.user1)
+        url = reverse("article-detail", kwargs={"slug": self.draft.slug})
+        resp = self.client.patch(url, {"is_published": True}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        pub_dt = timezone.datetime.fromisoformat(
+            resp.data["published_at"].replace("Z", "+00:00")
+        )
+        self.assertIsNotNone(pub_dt)
+
+
+    def test_forbid_update_by_non_author(self):
+        self.client.force_authenticate(user=self.user2)
+        url = reverse("article-detail", kwargs={"slug": self.draft.slug})
+        resp = self.client.patch(url, {"is_published": True}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+
+    def test_staff_can_update_any(self):
+        self.client.force_authenticate(user=self.staff)
+        url = reverse("article-detail", kwargs={"slug": self.draft.slug})
+        resp = self.client.patch(url, {"is_published": True}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+
+    def test_recent_action(self):
+        url = reverse("article-recent")
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.data
+        self.assertEqual(len(data), 5)
+        dates = [
+            timezone.datetime.fromisoformat(item["published_at"].replace("Z", "+00:00"))
+            for item in data
+        ]
+        # descending published_at
+        self.assertTrue(all(dates[i] >= dates[i+1] for i in range(len(dates)-1)))
+        # all published
+        for art in data:
+            self.assertTrue(art["is_published"])
 
 
 
@@ -27,7 +256,7 @@ urlpatterns = [
 
 @override_settings(ROOT_URLCONF=__name__)
 class VideoViewSetTests(APITestCase):
-    
+
     def setUp(self):
         # Users
         self.user1 = User.objects.create_user(

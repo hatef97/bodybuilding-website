@@ -108,9 +108,9 @@ class ArticleSerializer(serializers.ModelSerializer):
            automatically set `published_at` now.
         """
         # 1) Check for missing author_id on creation
-        if self.instance is None:
-            if "author" not in data:
-                raise serializers.ValidationError({"author": "This field is required."})
+        # if self.instance is None:
+        #     if "author" not in data:
+        #         raise serializers.ValidationError({"author": "This field is required."})
 
         # 2) Handle published_at auto‐population
         is_published = data.get("is_published", None)
@@ -295,4 +295,3 @@ class VideoSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
         return instance
-        
