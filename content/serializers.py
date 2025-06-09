@@ -6,7 +6,7 @@ from rest_framework import serializers
 from rest_framework.reverse import reverse as drf_reverse
 
 from core.models import CustomUser as User
-from .models import Article, Video
+from .models import Article, Video, ExerciseGuide
 
 
 
@@ -295,3 +295,103 @@ class VideoSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
         return instance
+
+
+
+class ExerciseGuideSerializer(serializers.ModelSerializer):
+    """
+    - Exposes `url` (HyperlinkedIdentityField) for detail lookups by slug.
+    - Shows `author` as read‐only string, accepts `author_id` on write.
+    - Ensures `steps` is non‐empty.
+    - Auto‐generates slug in model.save(); clients don’t set it.
+    - Marks `slug`, `created_at`, `updated_at` as read‐only.
+    - Provides `image_url` (absolute URL) rather than raw file path.
+    """
+
+    # 1) Hyperlinked identity for detail view (lookup on slug)
+    url = serializers.HyperlinkedIdentityField(
+        view_name="exerciseguide-detail",  # adjust to your router basename
+        lookup_field="slug",
+        read_only=True,
+    )
+
+    # 2) Represent the author as a string (username or __str__)
+    author = serializers.StringRelatedField(read_only=True)
+
+    # 3) Write‐only field to assign author by ID
+    author_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(),
+        source="author",
+        write_only=True,
+        required=False,
+        help_text="ID of the user who created this guide.",
+    )
+
+    # 4) Absolute URL for the image
+    image_url = serializers.SerializerMethodField(read_only=True)
+
+    # 5) Fields managed by the model: slug, timestamps
+    slug = serializers.ReadOnlyField()
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+
+    class Meta:
+        model = ExerciseGuide
+        fields = [
+            "url",
+            "id",
+            "slug",
+            "author",
+            "author_id",
+            "name",
+            "excerpt",
+            "steps",
+            "difficulty",
+            "primary_muscle",
+            "equipment_required",
+            "image",
+            "image_url",
+            "video_embed",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "url",
+            "id",
+            "slug",
+            "author",
+            "image_url",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate(self, data):
+        # 1) On create, require an author_id
+        if self.instance is None and "author" not in data:
+            raise serializers.ValidationError({"author": "This field is required."})
+
+        # 2) Ensure steps are present and non-blank
+        steps = data.get("steps", None)
+        if steps is not None and not steps.strip():
+            raise serializers.ValidationError({"steps": "Exercise steps cannot be empty."})
+
+        return data
+
+    def get_image_url(self, obj):
+        request = self.context.get("request")
+        if obj.image and hasattr(obj.image, "url"):
+            return request.build_absolute_uri(obj.image.url)
+        return None
+
+    def create(self, validated_data):
+        # Slug auto-generated in model.save()
+        guide = ExerciseGuide.objects.create(**validated_data)
+        return guide
+
+    def update(self, instance, validated_data):
+        # Apply any changes; save() will regenerate slug only if blank
+        for attr, val in validated_data.items():
+            setattr(instance, attr, val)
+        instance.save()
+        return instance
+        
