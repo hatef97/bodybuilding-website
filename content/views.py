@@ -7,8 +7,8 @@ from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.response import Response
 
-from .models import Article, Video
-from .serializers import ArticleSerializer, VideoSerializer
+from .models import Article, Video, ExerciseGuide
+from .serializers import ArticleSerializer, VideoSerializer, ExerciseGuideSerializer
 
 
 
@@ -197,3 +197,45 @@ class VideoViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(recent_qs, many=True, context={"request": request})
         return Response(serializer.data)
+
+
+
+class ExerciseGuideViewSet(viewsets.ModelViewSet):
+    """
+      - Uses 'slug' as the lookup field for detail URLs.
+      - Allows filtering by author username and difficulty.
+      - Supports search on name, excerpt, and steps.
+      - Supports ordering by name, created_at, updated_at, and difficulty.
+      - Only authors (or staff) can modify a guide; anyone can read.
+    """
+
+    queryset = ExerciseGuide.objects.select_related("author").all()
+    serializer_class = ExerciseGuideSerializer
+    lookup_field = "slug"
+
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsAuthorOrReadOnly]
+
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = [
+        "author__username",    # e.g. ?author__username=alice
+        "difficulty",          # e.g. ?difficulty=beginner
+    ]
+    search_fields = [
+        "name",
+        "excerpt",
+        "steps",
+    ]
+    ordering_fields = [
+        "name",
+        "created_at",
+        "updated_at",
+        "difficulty",
+    ]
+    ordering = ["name"]
+
+    def perform_create(self, serializer):
+        """
+        On create, if no author_id is provided, set author=request.user.
+        """
+        author = self.request.user
+        serializer.save(author=author)
