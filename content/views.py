@@ -7,8 +7,8 @@ from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.response import Response
 
-from .models import Article, Video, ExerciseGuide
-from .serializers import ArticleSerializer, VideoSerializer, ExerciseGuideSerializer
+from .models import Article, Video, ExerciseGuide, FitnessMeasurement
+from .serializers import ArticleSerializer, VideoSerializer, ExerciseGuideSerializer, FitnessMeasurementSerializer
 
 
 
@@ -239,3 +239,53 @@ class ExerciseGuideViewSet(viewsets.ModelViewSet):
         """
         author = self.request.user
         serializer.save(author=author)
+
+
+
+class FitnessMeasurementViewSet(viewsets.ModelViewSet):
+    """
+      - Uses 'pk' as the lookup field.
+      - Allows filtering by user__username, gender, and date_of_birth.
+      - Supports search on the user's username.
+      - Supports ordering by created_at, height_cm, weight_kg.
+      - Anyone can read; only the owner (or staff) can create/edit/delete.
+      - `perform_create` defaults user to request.user if not provided.
+    """
+    queryset = FitnessMeasurement.objects.select_related("user").all()
+    serializer_class = FitnessMeasurementSerializer
+    lookup_field = "pk"
+
+    permission_classes = [
+        permissions.IsAuthenticatedOrReadOnly,
+        IsAuthorOrReadOnly
+    ]
+
+    filter_backends = [
+        DjangoFilterBackend,
+        SearchFilter,
+        OrderingFilter,
+    ]
+    filterset_fields = [
+        "user__username",
+        "gender",
+        "date_of_birth",
+    ]
+    search_fields = [
+        "user__username",
+    ]
+    ordering_fields = [
+        "created_at",
+        "height_cm",
+        "weight_kg",
+    ]
+    ordering = ["-created_at"]
+
+    def perform_create(self, serializer):
+        """
+        If no user_id was provided in the payload, associate this record
+        with request.user. Otherwise respect the provided user (e.g. for admins).
+        """
+        if not serializer.validated_data.get("user"):
+            serializer.save(user=self.request.user)
+        else:
+            serializer.save()
