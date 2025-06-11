@@ -6,7 +6,7 @@ from rest_framework import serializers
 from rest_framework.reverse import reverse as drf_reverse
 
 from core.models import CustomUser as User
-from .models import Article, Video, ExerciseGuide
+from .models import Article, Video, ExerciseGuide, FitnessMeasurement
 
 
 
@@ -402,3 +402,98 @@ class ExerciseGuideSerializer(serializers.ModelSerializer):
             setattr(instance, attr, val)
         instance.save()
         return instance
+
+
+
+class FitnessMeasurementSerializer(serializers.ModelSerializer):
+        """
+        - Exposes `url` (HyperlinkedIdentityField) for detail lookups by pk.
+        - Represents `user` as read-only username, accepts `user_id` on write.
+        - Validates positive height_cm & weight_kg, and date_of_birth in the past.
+        - Exposes computed fields: height_m, bmi, bmi_category, bsa.
+        - Marks `created_at` and `updated_at` read-only.
+        """
+
+        url = serializers.HyperlinkedIdentityField(
+            view_name="fitnessmeasurement-detail",
+            lookup_field="pk",
+            read_only=True,
+        )
+
+        # user representation
+        user = serializers.StringRelatedField(read_only=True)
+        user_id = serializers.PrimaryKeyRelatedField(
+            queryset=User.objects.all(),
+            source="user",
+            write_only=True,
+            help_text="ID of the user for this measurement",
+        )
+
+        # computed fields
+        height_m = serializers.SerializerMethodField(read_only=True)
+        bmi = serializers.SerializerMethodField(read_only=True)
+        bmi_category = serializers.SerializerMethodField(read_only=True)
+        bsa = serializers.SerializerMethodField(read_only=True)
+
+        class Meta:
+            model = FitnessMeasurement
+            fields = [
+                "url",
+                "id",
+                "user",
+                "user_id",
+                "height_cm",
+                "weight_kg",
+                "gender",
+                "date_of_birth",
+                "height_m",
+                "bmi",
+                "bmi_category",
+                "bsa",
+                "created_at",
+                "updated_at",
+            ]
+            read_only_fields = [
+                "url",
+                "id",
+                "user",
+                "height_m",
+                "bmi",
+                "bmi_category",
+                "bsa",
+                "created_at",
+                "updated_at",
+            ]
+
+        def validate_height_cm(self, value):
+            if value <= 0:
+                raise serializers.ValidationError("Height must be a positive integer.")
+            return value
+
+        def validate_weight_kg(self, value):
+            if value <= 0:
+                raise serializers.ValidationError("Weight must be a positive number.")
+            return value
+
+        def validate_date_of_birth(self, value):
+            if value >= timezone.now().date():
+                raise serializers.ValidationError("Date of birth must be in the past.")
+            return value
+
+        def get_height_m(self, obj):
+            return obj.height_m
+
+        def get_bmi(self, obj):
+            return obj.bmi
+
+        def get_bmi_category(self, obj):
+            return obj.bmi_category
+
+        def get_bsa(self, obj):
+            return obj.bsa
+
+        def create(self, validated_data):
+            return super().create(validated_data)
+
+        def update(self, instance, validated_data):
+            return super().update(instance, validated_data)
