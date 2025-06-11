@@ -11,8 +11,8 @@ from rest_framework.routers import DefaultRouter
 from rest_framework.test import APIRequestFactory
 
 from core.models import CustomUser as User
-from content.models import Article, Video
-from content.serializers import ArticleSerializer, VideoSerializer
+from content.models import Article, Video, ExerciseGuide
+from content.serializers import ArticleSerializer, VideoSerializer, ExerciseGuideSerializer
 from content.views import ArticleViewSet, VideoViewSet
 
 
@@ -659,3 +659,145 @@ class VideoSerializerTests(TestCase):
         self.assertIn("title", meta_fields)
         self.assertIn("description", meta_fields)
         self.assertIn("url", meta_fields)
+
+
+
+class ExerciseGuideSerializerTests(TestCase):
+
+    def setUp(self):
+        # Create a request factory for building absolute URIs
+        self.factory = APIRequestFactory()
+        self.request = self.factory.get("/")
+        
+        # Create a user
+        self.user = User.objects.create_user(
+            username="testuser", email="test@example.com", password="pass"
+        )
+        
+        # Create a sample ExerciseGuide with an image
+        gif = (
+            b"\x47\x49\x46\x38\x37\x61\x01\x00\x01\x00\x80\x00\x00\x00"
+            b"\x00\x00\xff\xff\xff\x21\xf9\x04\x01\x00\x00\x00\x00\x2c"
+            b"\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x44\x01\x00\x3b"
+        )
+        self.image_file = SimpleUploadedFile(
+            "test.gif", gif, content_type="image/gif"
+        )
+        self.guide = ExerciseGuide.objects.create(
+            author=self.user,
+            name="Push Up",
+            excerpt="A basic upper-body exercise.",
+            steps="1. Get into plank\n2. Lower your body\n3. Push back up",
+            difficulty=ExerciseGuide.DIFFICULTY_BEGINNER,
+            primary_muscle="Chest",
+            equipment_required="None",
+            image=self.image_file,
+            video_embed="<iframe></iframe>",
+        )
+
+
+    def test_serialize_fields(self):
+        """Serializer should include all read-only & writable fields correctly."""
+        serializer = ExerciseGuideSerializer(
+            instance=self.guide, context={"request": self.request}
+        )
+        data = serializer.data
+        
+        # Read-only hyperlinked identity
+        self.assertIn("url", data)
+        self.assertTrue(data["url"].endswith(f"/exercise-guides/{self.guide.slug}/"))
+        
+        # Core fields
+        self.assertEqual(data["id"], self.guide.id)
+        self.assertEqual(data["slug"], self.guide.slug)
+        self.assertEqual(data["author"], str(self.user))
+        self.assertEqual(data["name"], "Push Up")
+        self.assertEqual(data["excerpt"], "A basic upper-body exercise.")
+        self.assertEqual(data["steps"], "1. Get into plank\n2. Lower your body\n3. Push back up")
+        self.assertEqual(data["difficulty"], ExerciseGuide.DIFFICULTY_BEGINNER)
+        self.assertEqual(data["primary_muscle"], "Chest")
+        self.assertEqual(data["equipment_required"], "None")
+        self.assertEqual(data["video_embed"], "<iframe></iframe>")
+        
+        # Image URL is absolute
+        self.assertIn("image_url", data)
+        self.assertTrue(data["image_url"].startswith("http://testserver"))
+        self.assertTrue(data["image_url"].endswith("/" + self.guide.image.name))
+        
+        # Timestamps
+        self.assertIn("created_at", data)
+        self.assertIn("updated_at", data)
+        
+        # Read-only: author_id should not appear
+        self.assertNotIn("author_id", data)
+
+
+    def test_validate_requires_author_on_create(self):
+        """Creating without author_id should raise under 'author'."""
+        payload = {
+            "name": "Squat",
+            "excerpt": "Lower-body exercise",
+            "steps": "1. Stand\n2. Squat down\n3. Stand up",
+            "difficulty": ExerciseGuide.DIFFICULTY_BEGINNER,
+            "primary_muscle": "Legs",
+            "equipment_required": "None",
+            "video_embed": "",
+        }
+        serializer = ExerciseGuideSerializer(data=payload, context={"request": self.request})
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("author", serializer.errors)
+        self.assertEqual(serializer.errors["author"][0], "This field is required.")
+
+
+    def test_validate_rejects_empty_steps(self):
+        """Creating or updating with blank steps should raise under 'steps'."""
+        # Create with author_id but blank steps
+        payload = {
+            "author_id": self.user.id,
+            "name": "Squat",
+            "excerpt": "Lower-body",
+            "steps": "   ",
+            "difficulty": ExerciseGuide.DIFFICULTY_BEGINNER,
+            "primary_muscle": "Legs",
+            "equipment_required": "",
+            "video_embed": "",
+        }
+        serializer = ExerciseGuideSerializer(data=payload, context={"request": self.request})
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("steps", serializer.errors)
+        self.assertEqual(serializer.errors["steps"][0], "Exercise steps cannot be empty.")
+
+
+    def test_create_success(self):
+        """Valid data should create an ExerciseGuide with auto-generated slug."""
+        payload = {
+            "author_id": self.user.id,
+            "name": "Lunge",
+            "excerpt": "Another lower-body exercise",
+            "steps": "1. Step forward\n2. Bend both knees\n3. Return",
+            "difficulty": ExerciseGuide.DIFFICULTY_BEGINNER,
+            "primary_muscle": "Legs",
+            "equipment_required": "",
+            "video_embed": "",
+        }
+        serializer = ExerciseGuideSerializer(data=payload, context={"request": self.request})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        guide = serializer.save()
+
+        # Slug auto-generated from name
+        self.assertTrue(guide.slug.startswith("lunge"))
+        self.assertEqual(guide.name, "Lunge")
+        self.assertEqual(guide.author, self.user)
+
+
+    def test_update_preserves_slug(self):
+        """Updating name should not change an existing slug."""
+        original_slug = self.guide.slug
+        payload = {"name": "Push Up Advanced"}
+        serializer = ExerciseGuideSerializer(
+            instance=self.guide, data=payload, partial=True, context={"request": self.request}
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        updated = serializer.save()
+        self.assertEqual(updated.slug, original_slug)
+        self.assertEqual(updated.name, "Push Up Advanced")

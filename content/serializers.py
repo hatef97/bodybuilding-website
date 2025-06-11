@@ -334,6 +334,12 @@ class ExerciseGuideSerializer(serializers.ModelSerializer):
     slug = serializers.ReadOnlyField()
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
+    
+    steps = serializers.CharField(
+        required=True,
+        allow_blank=True,
+        help_text="Detailed, ordered steps (Markdown or HTML).",
+    )
 
     class Meta:
         model = ExerciseGuide
@@ -394,4 +400,3 @@ class ExerciseGuideSerializer(serializers.ModelSerializer):
             setattr(instance, attr, val)
         instance.save()
         return instance
-        
