@@ -334,7 +334,7 @@ class ExerciseGuideSerializer(serializers.ModelSerializer):
     slug = serializers.ReadOnlyField()
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
-    
+
     steps = serializers.CharField(
         required=True,
         allow_blank=True,
@@ -372,8 +372,10 @@ class ExerciseGuideSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, data):
-        # 1) On create, require an author_id
-        if self.instance is None and "author" not in data:
+        # 1) On create (instance is None) with an anonymous request, require author_id
+        request = self.context.get("request", None)
+        is_anon = not (request and getattr(request, "user", None) and request.user.is_authenticated)
+        if self.instance is None and is_anon and "author" not in data:
             raise serializers.ValidationError({"author": "This field is required."})
 
         # 2) Ensure steps are present and non-blank

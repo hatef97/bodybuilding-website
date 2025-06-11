@@ -11,14 +11,14 @@ from rest_framework.routers import DefaultRouter
 from rest_framework.test import APITestCase, APIRequestFactory
 
 from core.models import CustomUser as User
-from content.models import Video, Article
+from content.models import Video, Article, ExerciseGuide
 from content.serializers import VideoSerializer, ArticleSerializer
 from content.views import VideoViewSet, ArticleViewSet
 
 
 
 class ArticleViewSetTests(APITestCase):
-    
+
     def setUp(self):
         # Create users
         self.user1 = User.objects.create_user(
@@ -492,3 +492,186 @@ class VideoViewSetTests(APITestCase):
         self.assertTrue(all(dates[i] >= dates[i + 1] for i in range(len(dates) - 1)))
         for v in data:
             self.assertTrue(v["is_published"])
+
+
+
+class ExerciseGuideViewSetTests(APITestCase):
+
+    def setUp(self):
+        # Users: regular and staff
+        self.alice = User.objects.create_user(
+            username="alice", email="alice@example.com", password="pass"
+        )
+        self.bob = User.objects.create_user(
+            username="bob", email="bob@example.com", password="pass"
+        )
+        self.admin = User.objects.create_user(
+            username="admin", email="admin@example.com", password="pass", is_staff=True
+        )
+
+        # Two guides by Alice
+        self.guide1 = ExerciseGuide.objects.create(
+            author=self.alice,
+            name="Push Up",
+            excerpt="Push up description",
+            steps="1. Plank\n2. Lower\n3. Raise",
+            difficulty=ExerciseGuide.DIFFICULTY_BEGINNER,
+            primary_muscle="Chest",
+            equipment_required="None",
+            video_embed="<iframe></iframe>",
+        )
+        self.guide2 = ExerciseGuide.objects.create(
+            author=self.alice,
+            name="Squat",
+            excerpt="Squat description",
+            steps="1. Stand\n2. Bend knees\n3. Rise",
+            difficulty=ExerciseGuide.DIFFICULTY_ADVANCED,
+            primary_muscle="Legs",
+            equipment_required="Barbell",
+            video_embed="",
+        )
+
+        # One guide by Bob
+        self.bob_guide = ExerciseGuide.objects.create(
+            author=self.bob,
+            name="Lunge",
+            excerpt="Lunge description",
+            steps="1. Step\n2. Bend\n3. Return",
+            difficulty=ExerciseGuide.DIFFICULTY_INTERMEDIATE,
+            primary_muscle="Legs",
+            equipment_required="None",
+            video_embed="",
+        )
+
+        # Additional guides for ordering/search
+        for i in range(3):
+            ExerciseGuide.objects.create(
+                author=self.alice,
+                name=f"Guide {i}",
+                excerpt="X",
+                steps="Step",
+                difficulty=ExerciseGuide.DIFFICULTY_BEGINNER,
+            )
+
+
+    def test_list_all_guides(self):
+        url = reverse("exerciseguide-list")
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        # Total: 2 (Alice) +1 (Bob) +3 extra =6
+        self.assertEqual(len(resp.data), ExerciseGuide.objects.count())
+
+
+    def test_retrieve_guide(self):
+        url = reverse("exerciseguide-detail", kwargs={"slug": self.guide1.slug})
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["slug"], self.guide1.slug)
+        self.assertEqual(resp.data["name"], "Push Up")
+
+
+    def test_filter_by_difficulty(self):
+        url = reverse("exerciseguide-list") + f"?difficulty={ExerciseGuide.DIFFICULTY_ADVANCED}"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        for item in resp.data:
+            self.assertEqual(item["difficulty"], ExerciseGuide.DIFFICULTY_ADVANCED)
+
+
+    def test_filter_by_author_username(self):
+        url = reverse("exerciseguide-list") + f"?author__username={self.bob.username}"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(resp.data), 1)
+        self.assertEqual(resp.data[0]["author"], str(self.bob))
+
+
+    def test_search_name_excerpt_steps(self):
+        # search "Squat" should return guide2
+        url = reverse("exerciseguide-list") + "?search=Squat"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        slugs = [g["slug"] for g in resp.data]
+        self.assertIn(self.guide2.slug, slugs)
+        self.assertNotIn(self.guide1.slug, slugs)
+
+
+    def test_ordering_by_name(self):
+        url = reverse("exerciseguide-list") + "?ordering=name"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        names = [g["name"] for g in resp.data]
+        self.assertEqual(names, sorted(names))
+
+
+    def test_unauthenticated_cannot_create(self):
+        url = reverse("exerciseguide-list")
+        payload = {
+            "author_id": self.alice.id,
+            "name": "New Guide",
+            "excerpt": "Desc",
+            "steps": "Do it",
+            "difficulty": ExerciseGuide.DIFFICULTY_BEGINNER,
+            "primary_muscle": "",
+            "equipment_required": "",
+            "video_embed": "",
+        }
+        resp = self.client.post(url, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+    def test_authenticated_create_default_author(self):
+        self.client.force_authenticate(user=self.alice)
+        url = reverse("exerciseguide-list")
+        payload = {
+            # omit author_id: perform_create will set to request.user
+            "name": "New Guide",
+            "excerpt": "Desc",
+            "steps": "Do it",
+            "difficulty": ExerciseGuide.DIFFICULTY_BEGINNER,
+            "primary_muscle": "Arms",
+            "equipment_required": "None",
+            "video_embed": "",
+        }
+        resp = self.client.post(url, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp.data["author"], str(self.alice))
+        self.assertTrue(resp.data["slug"].startswith("new-guide"))
+
+
+    def test_forbid_update_by_non_author(self):
+        self.client.force_authenticate(user=self.bob)
+        url = reverse("exerciseguide-detail", kwargs={"slug": self.guide1.slug})
+        resp = self.client.patch(url, {"name": "Changed"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+
+    def test_author_can_update(self):
+        self.client.force_authenticate(user=self.alice)
+        url = reverse("exerciseguide-detail", kwargs={"slug": self.guide2.slug})
+        resp = self.client.patch(url, {"excerpt": "Updated"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["excerpt"], "Updated")
+
+
+    def test_staff_can_update_any(self):
+        self.client.force_authenticate(user=self.admin)
+        url = reverse("exerciseguide-detail", kwargs={"slug": self.bob_guide.slug})
+        resp = self.client.patch(url, {"excerpt": "Admin Updated"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["excerpt"], "Admin Updated")
+
+
+    def test_delete_by_author(self):
+        self.client.force_authenticate(user=self.alice)
+        url = reverse("exerciseguide-detail", kwargs={"slug": self.guide1.slug})
+        resp = self.client.delete(url)
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(ExerciseGuide.objects.filter(pk=self.guide1.pk).exists())
+
+
+    def test_delete_forbidden_to_non_author(self):
+        self.client.force_authenticate(user=self.bob)
+        url = reverse("exerciseguide-detail", kwargs={"slug": self.guide1.slug})
+        resp = self.client.delete(url)
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
