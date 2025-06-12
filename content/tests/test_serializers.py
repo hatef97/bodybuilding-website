@@ -1,6 +1,6 @@
-import io
+import io, math
 import tempfile
-from datetime import timedelta
+from datetime import timedelta, date
 
 from django.test import TestCase, override_settings
 from django.urls import include, path, reverse
@@ -9,11 +9,12 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 
 from rest_framework.routers import DefaultRouter
 from rest_framework.test import APIRequestFactory
+from rest_framework.reverse import reverse as drf_reverse
 
 from core.models import CustomUser as User
 from content.models import Article, Video, ExerciseGuide
-from content.serializers import ArticleSerializer, VideoSerializer, ExerciseGuideSerializer
-from content.views import ArticleViewSet, VideoViewSet
+from content.serializers import ArticleSerializer, VideoSerializer, ExerciseGuideSerializer, FitnessMeasurementSerializer
+from content.views import ArticleViewSet, VideoViewSet, FitnessMeasurement
 
 
 
@@ -801,3 +802,117 @@ class ExerciseGuideSerializerTests(TestCase):
         updated = serializer.save()
         self.assertEqual(updated.slug, original_slug)
         self.assertEqual(updated.name, "Push Up Advanced")
+
+
+
+class FitnessMeasurementSerializerTests(TestCase):
+
+    def setUp(self):
+        # Create user
+        self.user = User.objects.create_user(username="alice", email="alice@example.com", password="pass")
+        # A measurement instance
+        self.measurement = FitnessMeasurement.objects.create(
+            user=self.user,
+            height_cm=180,
+            weight_kg=81.0,
+            gender=FitnessMeasurement.GENDER_MALE,
+            date_of_birth=timezone.now().date() - timedelta(days=365 * 30),  # 30 years ago
+        )
+        self.factory = APIRequestFactory()
+
+
+    def test_serialize_includes_fields_and_computed(self):
+        """
+        Serializer.data should include all model fields and computed properties.
+        """
+        request = self.factory.get("/measurements/{}/".format(self.measurement.pk))
+        serializer = FitnessMeasurementSerializer(
+            instance=self.measurement,
+            context={"request": request}
+        )
+        data = serializer.data
+
+        # URL field
+        expected_url = request.build_absolute_uri(
+            drf_reverse("fitnessmeasurement-detail", kwargs={"pk": self.measurement.pk}, request=request)
+        )
+        self.assertEqual(data["url"], expected_url)
+
+        # Basic fields
+        self.assertEqual(data["id"], self.measurement.pk)
+        self.assertEqual(data["user"], str(self.user))
+        self.assertNotIn("user_id", data)
+        self.assertEqual(data["height_cm"], 180)
+        self.assertEqual(data["weight_kg"], 81.0)
+        self.assertEqual(data["gender"], FitnessMeasurement.GENDER_MALE)
+        self.assertEqual(
+            data["date_of_birth"],
+            (timezone.now().date() - timedelta(days=365 * 30)).isoformat()
+        )
+
+        # Computed
+        self.assertAlmostEqual(data["height_m"], 1.80, places=2)
+        self.assertAlmostEqual(data["bmi"], round(81.0 / (1.8 * 1.8), 2))
+        # BMI category at BMI=25 is Overweight
+        self.assertEqual(data["bmi_category"], "Overweight")
+        expected_bsa = round(math.sqrt((180 * 81.0) / 3600.0), 2)
+        self.assertAlmostEqual(data["bsa"], expected_bsa)
+
+        # Read-only timestamps present
+        self.assertIn("created_at", data)
+        self.assertIn("updated_at", data)
+
+
+    def test_deserialize_valid_input_creates_instance(self):
+        """
+        Valid input with user_id should create a new FitnessMeasurement.
+        """
+        payload = {
+            "user_id": self.user.pk,
+            "height_cm": 170,
+            "weight_kg": 70.5,
+            "gender": FitnessMeasurement.GENDER_FEMALE,
+            "date_of_birth": (date.today() - timedelta(days=365 * 25)).isoformat(),
+        }
+        request = self.factory.post("/measurements/", payload, format="json")
+        serializer = FitnessMeasurementSerializer(data=payload, context={"request": request})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        inst = serializer.save()
+
+        self.assertEqual(inst.user, self.user)
+        self.assertEqual(inst.height_cm, 170)
+        self.assertEqual(inst.weight_kg, 70.5)
+        self.assertEqual(inst.gender, FitnessMeasurement.GENDER_FEMALE)
+        self.assertEqual(inst.date_of_birth, date.today() - timedelta(days=365 * 25))
+
+
+    def test_validate_height_cm_must_be_positive(self):
+        payload = {"user_id": self.user.pk, "height_cm": 0, "weight_kg": 60.0}
+        serializer = FitnessMeasurementSerializer(data=payload)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("height_cm", serializer.errors)
+        self.assertEqual(serializer.errors["height_cm"][0], "Height must be a positive integer.")
+
+
+    def test_validate_weight_kg_must_be_positive(self):
+        payload = {"user_id": self.user.pk, "height_cm": 160, "weight_kg": 0}
+        serializer = FitnessMeasurementSerializer(data=payload)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("weight_kg", serializer.errors)
+        self.assertEqual(serializer.errors["weight_kg"][0], "Weight must be a positive number.")
+
+
+    def test_validate_date_of_birth_in_past(self):
+        tomorrow = date.today() + timedelta(days=1)
+        payload = {"user_id": self.user.pk, "height_cm": 160, "weight_kg": 60.0, "date_of_birth": tomorrow.isoformat()}
+        serializer = FitnessMeasurementSerializer(data=payload)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("date_of_birth", serializer.errors)
+        self.assertEqual(serializer.errors["date_of_birth"][0], "Date of birth must be in the past.")
+
+
+    def test_requires_user_id_on_create(self):
+        payload = {"height_cm": 160, "weight_kg": 60.0}
+        serializer = FitnessMeasurementSerializer(data=payload)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("user_id", serializer.errors)
