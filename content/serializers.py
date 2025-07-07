@@ -426,6 +426,7 @@ class FitnessMeasurementSerializer(serializers.ModelSerializer):
             queryset=User.objects.all(),
             source="user",
             write_only=True,
+            required=False, 
             help_text="ID of the user for this measurement",
         )
 

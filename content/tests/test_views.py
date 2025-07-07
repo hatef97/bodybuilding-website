@@ -679,6 +679,7 @@ class ExerciseGuideViewSetTests(APITestCase):
 
 
 class FitnessMeasurementViewSetTests(APITestCase):
+    
     def setUp(self):
         # Users
         self.user1 = User.objects.create_user(
@@ -718,12 +719,14 @@ class FitnessMeasurementViewSetTests(APITestCase):
             weight_kg=80.0,
         )
 
+
     def test_list_all_measurements(self):
         url = reverse("fitnessmeasurement-list")
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         # Expect 3 total
         self.assertEqual(len(resp.data), 3)
+
 
     def test_retrieve_includes_computed_fields(self):
         url = reverse("fitnessmeasurement-detail", kwargs={"pk": self.fm1.pk})
@@ -750,6 +753,7 @@ class FitnessMeasurementViewSetTests(APITestCase):
         detail_url = reverse("fitnessmeasurement-detail", kwargs={"pk": self.fm1.pk})
         self.assertTrue(data["url"].endswith(detail_url))
 
+
     def test_filter_by_username(self):
         url = reverse("fitnessmeasurement-list") + f"?user__username={self.user1.username}"
         resp = self.client.get(url)
@@ -757,12 +761,14 @@ class FitnessMeasurementViewSetTests(APITestCase):
         # Only fm1 and fm3 belong to alice
         self.assertEqual({m["id"] for m in resp.data}, {self.fm1.id, self.fm3.id})
 
+
     def test_filter_by_gender(self):
         url = reverse("fitnessmeasurement-list") + f"?gender={FitnessMeasurement.GENDER_FEMALE}"
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(len(resp.data), 1)
         self.assertEqual(resp.data[0]["id"], self.fm2.id)
+
 
     def test_filter_by_date_of_birth(self):
         dob_str = self.fm2.date_of_birth.isoformat()
@@ -772,12 +778,14 @@ class FitnessMeasurementViewSetTests(APITestCase):
         self.assertEqual(len(resp.data), 1)
         self.assertEqual(resp.data[0]["id"], self.fm2.id)
 
+
     def test_search_on_username(self):
         url = reverse("fitnessmeasurement-list") + "?search=ali"
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         # 'ali' matches 'alice'
         self.assertTrue(all(m["user"] == str(self.user1) for m in resp.data))
+
 
     def test_ordering_by_height_and_weight(self):
         # ascending height_cm
@@ -792,10 +800,12 @@ class FitnessMeasurementViewSetTests(APITestCase):
         weights = [m["weight_kg"] for m in resp.data]
         self.assertEqual(weights, sorted(weights, reverse=True))
 
+
     def test_unauthenticated_create_forbidden(self):
         payload = {"height_cm": 160, "weight_kg": 60.0, "gender": "", "date_of_birth": None}
         resp = self.client.post(reverse("fitnessmeasurement-list"), payload, format="json")
         self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
 
     def test_authenticated_create_defaults_user(self):
         self.client.force_authenticate(self.user1)
@@ -805,6 +815,7 @@ class FitnessMeasurementViewSetTests(APITestCase):
         created = FitnessMeasurement.objects.get(pk=resp.data["id"])
         self.assertEqual(created.user, self.user1)
 
+
     def test_admin_create_for_other_user_with_user_id(self):
         self.client.force_authenticate(self.staff)
         payload = {"user_id": self.user2.id, "height_cm": 150, "weight_kg": 50.0}
@@ -812,6 +823,7 @@ class FitnessMeasurementViewSetTests(APITestCase):
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         created = FitnessMeasurement.objects.get(pk=resp.data["id"])
         self.assertEqual(created.user, self.user2)
+
 
     def test_owner_can_update(self):
         self.client.force_authenticate(self.user1)
@@ -822,17 +834,21 @@ class FitnessMeasurementViewSetTests(APITestCase):
         self.fm1.refresh_from_db()
         self.assertEqual(self.fm1.weight_kg, new_weight)
 
+
     def test_non_owner_cannot_update(self):
         self.client.force_authenticate(self.user2)
         url = reverse("fitnessmeasurement-detail", kwargs={"pk": self.fm1.pk})
         resp = self.client.patch(url, {"weight_kg": 80.0}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
+
     def test_staff_can_update_any(self):
         self.client.force_authenticate(self.staff)
         url = reverse("fitnessmeasurement-detail", kwargs={"pk": self.fm1.pk})
         resp = self.client.patch(url, {"weight_kg": 80.0}, format="json")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+
 
     def test_owner_can_delete(self):
         self.client.force_authenticate(self.user1)
@@ -841,11 +857,14 @@ class FitnessMeasurementViewSetTests(APITestCase):
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(FitnessMeasurement.objects.filter(pk=self.fm3.pk).exists())
 
+
+
     def test_non_owner_cannot_delete(self):
         self.client.force_authenticate(self.user2)
         url = reverse("fitnessmeasurement-detail", kwargs={"pk": self.fm1.pk})
         resp = self.client.delete(url)
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
 
     def test_staff_can_delete_any(self):
         self.client.force_authenticate(self.staff)

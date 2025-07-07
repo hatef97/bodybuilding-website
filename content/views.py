@@ -242,6 +242,22 @@ class ExerciseGuideViewSet(viewsets.ModelViewSet):
 
 
 
+class IsUserOrReadOnly(permissions.BasePermission):
+    """
+    Custom permission: anyone can read, but only the owner (obj.user)
+    or staff can edit or delete.
+    """
+    def has_object_permission(self, request, view, obj):
+        # SAFE_METHODS are GET, HEAD, OPTIONS
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        # Only the user who owns this measurement or staff may write/delete
+        return obj.user == request.user or request.user.is_staff
+
+
+
+
 class FitnessMeasurementViewSet(viewsets.ModelViewSet):
     """
       - Uses 'pk' as the lookup field.
@@ -257,7 +273,7 @@ class FitnessMeasurementViewSet(viewsets.ModelViewSet):
 
     permission_classes = [
         permissions.IsAuthenticatedOrReadOnly,
-        IsAuthorOrReadOnly
+        IsUserOrReadOnly
     ]
 
     filter_backends = [
