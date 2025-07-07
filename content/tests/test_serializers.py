@@ -18,17 +18,6 @@ from content.views import ArticleViewSet, VideoViewSet, FitnessMeasurement
 
 
 
-# ---------- Test URLConf for HyperlinkedIdentityField ----------
-router = DefaultRouter()
-router.register(r"articles", ArticleViewSet, basename="article")
-
-urlpatterns = [
-    path("", include(router.urls)),
-]
-
-
-
-@override_settings(ROOT_URLCONF=__name__)
 class ArticleSerializerTests(TestCase):
 
     def setUp(self):

@@ -101,16 +101,11 @@ class ArticleSerializer(serializers.ModelSerializer):
     def validate(self, data):
         """
         1. If creating (self.instance is None) and no `author_id` was provided,
-           raise ValidationError under key 'author'.
-
-        2. Enforce that if `is_published` is True, then `published_at` must be provided.
-           If the client didn’t supply `published_at`, but they set `is_published=True`,
-           automatically set `published_at` now.
+        raise ValidationError under key 'author'.
         """
-        # 1) Check for missing author_id on creation
-        # if self.instance is None:
-        #     if "author" not in data:
-        #         raise serializers.ValidationError({"author": "This field is required."})
+        if self.instance is None:
+            if "author" not in data:
+                raise serializers.ValidationError({"author": "This field is required."})
 
         # 2) Handle published_at auto‐population
         is_published = data.get("is_published", None)
@@ -480,7 +475,15 @@ class FitnessMeasurementSerializer(serializers.ModelSerializer):
             if value >= timezone.now().date():
                 raise serializers.ValidationError("Date of birth must be in the past.")
             return value
-
+            
+        def validate(self, attrs):
+            # Enforce user_id when serializer used stand-alone (no request in context)
+            if self.instance is None and 'user' not in attrs:
+                req = self.context.get('request')
+                if not req or req.user.is_anonymous:
+                    raise serializers.ValidationError({'user_id': 'This field is required.'})
+            return attrs
+        
         def get_height_m(self, obj):
             return obj.height_m
 
