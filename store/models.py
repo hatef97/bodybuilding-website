@@ -48,4 +48,18 @@ class Cart(models.Model):
         """Calculate the total price of items in the cart."""
         total = sum([item.total_price() for item in self.cart_items.all()])
         return total
-        
+
+
+
+# CartItem model: Represents an individual product in the cart with a quantity
+class CartItem(models.Model):
+    cart = models.ForeignKey(Cart, related_name="cart_items", on_delete=models.CASCADE)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    quantity = models.PositiveIntegerField()
+
+    def __str__(self):
+        return f"{self.product.name} x {self.quantity}"
+
+    def total_price(self):
+        """Calculate total price for this item (quantity * product price)."""
+        return self.quantity * self.product.price
