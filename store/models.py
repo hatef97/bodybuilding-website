@@ -32,4 +32,20 @@ class Product(models.Model):
         """Increase the stock if needed."""
         self.stock += quantity
         self.save()
+
+
+
+# Cart model: Represents a shopping cart for a user
+class Cart(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    products = models.ManyToManyField(Product, through="CartItem")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Cart of {self.user}"
+
+    def total_price(self):
+        """Calculate the total price of items in the cart."""
+        total = sum([item.total_price() for item in self.cart_items.all()])
+        return total
         
