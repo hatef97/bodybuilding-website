@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'progress',
     'community',
     'content',
+    'store',
 ]
 
 MIDDLEWARE = [
