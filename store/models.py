@@ -63,3 +63,29 @@ class CartItem(models.Model):
     def total_price(self):
         """Calculate total price for this item (quantity * product price)."""
         return self.quantity * self.product.price
+
+
+
+# Order model: Represents a completed order for a user
+class Order(models.Model):
+    ORDER_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('completed', 'Completed'),
+        ('shipped', 'Shipped'),
+    ]
+    
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    cart = models.OneToOneField(Cart, on_delete=models.CASCADE)
+    status = models.CharField(max_length=20, choices=ORDER_STATUS_CHOICES, default='pending')
+    total_price = models.DecimalField(max_digits=10, decimal_places=2)
+    shipping_address = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Order #{self.id} by {self.user}"
+
+    def save(self, *args, **kwargs):
+        # Set total price of the order based on the cart
+        self.total_price = self.cart.total_price()
+        super().save(*args, **kwargs)
+        
