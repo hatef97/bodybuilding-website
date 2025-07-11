@@ -4,6 +4,7 @@ import datetime
 from django.test import TestCase
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
+from django.core.exceptions import ValidationError
 
 from store.models import Product, Cart, CartItem
 from core.models import CustomUser as User
@@ -146,3 +147,69 @@ class CartModelTests(TestCase):
     def test_cart_empty_total_price(self):
         empty_cart = Cart.objects.create(user=self.user)
         self.assertEqual(empty_cart.total_price(), 0)
+
+
+
+class CartItemModelTest(TestCase):
+    
+    def setUp(self):
+        # Create a test user for associating with Cart instances
+        self.user = User.objects.create_user(
+            email="testuser@example.com",
+            username="testuser",
+            password="password123"
+        )
+        # Create a Product with known attributes for predictable behavior
+        self.product = Product.objects.create(
+            name="Test Product",
+            description="A product for testing",
+            price=Decimal("9.99"),  # Decimal ensures accurate currency calculations
+            stock=100  # Initial inventory level
+        )
+        # Instantiate a Cart linked to the test user
+        self.cart = Cart.objects.create(user=self.user)
+        # Create a CartItem associating the cart and product with a set quantity
+        self.cart_item = CartItem.objects.create(
+            cart=self.cart,
+            product=self.product,
+            quantity=3  # Quantity used for price calculation tests
+        )
+
+
+    def test_str_returns_product_name_and_quantity(self):
+        # __str__ should reflect "<product name> x <quantity>"
+        expected = f"{self.product.name} x {self.cart_item.quantity}"
+        self.assertEqual(str(self.cart_item), expected)
+
+
+    def test_total_price_calculation(self):
+        # total_price() multiplies product.price by quantity
+        expected_total = self.product.price * self.cart_item.quantity
+        self.assertEqual(self.cart_item.total_price(), expected_total)
+
+
+    def test_zero_quantity_and_total_price_zero(self):
+        # Edge case: zero quantity should yield zero total price
+        zero_item = CartItem(cart=self.cart, product=self.product, quantity=0)
+        self.assertEqual(zero_item.total_price(), Decimal("0"))
+
+
+    def test_negative_quantity_validation(self):
+        # CartItem.quantity is PositiveIntegerField; negative values should fail validation
+        negative_item = CartItem(cart=self.cart, product=self.product, quantity=-1)
+        with self.assertRaises(ValidationError):
+            negative_item.full_clean()
+
+
+    def test_deleting_product_cascades_to_cart_item(self):
+        # Deleting the Product should cascade delete associated CartItem(s)
+        item = CartItem.objects.create(cart=self.cart, product=self.product, quantity=1)
+        self.product.delete()
+        with self.assertRaises(CartItem.DoesNotExist):
+            CartItem.objects.get(pk=item.pk)
+
+
+    def test_cart_relationship(self):
+        # Verify that the cart's reverse relation returns our CartItem
+        items = self.cart.cart_items.all()
+        self.assertIn(self.cart_item, items)
