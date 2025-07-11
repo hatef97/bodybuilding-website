@@ -5,8 +5,9 @@ from django.test import TestCase
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 
-from store.models import Product, Cart, CartItem
+from store.models import Product, Cart, CartItem, Order
 from core.models import CustomUser as User
 
 
@@ -151,7 +152,7 @@ class CartModelTests(TestCase):
 
 
 class CartItemModelTest(TestCase):
-    
+
     def setUp(self):
         # Create a test user for associating with Cart instances
         self.user = User.objects.create_user(
@@ -213,3 +214,122 @@ class CartItemModelTest(TestCase):
         # Verify that the cart's reverse relation returns our CartItem
         items = self.cart.cart_items.all()
         self.assertIn(self.cart_item, items)
+
+
+
+class OrderModelTest(TestCase):
+
+    def setUp(self):
+        # Create a test user to associate with Order
+        self.user = User.objects.create_user(
+            email="orderuser@example.com",
+            username="orderuser",
+            password="securepass"
+        )
+        # Create a product with a fixed price for predictable calculations
+        self.product = Product.objects.create(
+            name="Widget",
+            description="A handy widget",
+            price=Decimal("5.00"),  # Unit price
+            stock=50
+        )
+        # Create a cart tied to our test user
+        self.cart = Cart.objects.create(user=self.user)
+        # Add an item to the cart: 2 widgets at 5.00 each => total 10.00
+        CartItem.objects.create(cart=self.cart, product=self.product, quantity=2)
+
+
+    def test_str_returns_order_id_and_user(self):
+        # Order.__str__ should output "Order #<id> by <user>"
+        order = Order.objects.create(
+            user=self.user,
+            cart=self.cart,
+            total_price=Decimal("0.00"),  # Dummy, overridden in save()
+            shipping_address="123 Test Lane"
+        )
+        expected = f"Order #{order.id} by {self.user}"
+        self.assertEqual(str(order), expected)
+
+
+    def test_save_sets_total_price_from_cart(self):
+        # Instantiate with incorrect total_price, then save should recalc
+        order = Order(
+            user=self.user,
+            cart=self.cart,
+            total_price=Decimal("999.99"),  # Will be overridden
+            shipping_address="456 Sample Road"
+        )
+        order.save()  # triggers recalculation
+        # Expected total is cart.total_price(): 5.00 * 2 = 10.00
+        self.assertEqual(order.total_price, self.cart.total_price())
+
+
+    def test_default_status_pending(self):
+        # Creating without specifying status defaults to 'pending'
+        order = Order.objects.create(
+            user=self.user,
+            cart=self.cart,
+            total_price=Decimal("0.00"),
+            shipping_address="789 Example Blvd"
+        )
+        self.assertEqual(order.status, 'pending')
+
+
+    def test_status_choices_validation(self):
+        # Assign an invalid status and expect a validation error
+        order = Order(
+            user=self.user,
+            cart=self.cart,
+            total_price=Decimal("0.00"),
+            shipping_address="1010 Error St",
+            status="invalid_status"
+        )
+        with self.assertRaises(ValidationError):
+            order.full_clean()  # checks choices constraint
+
+
+    def test_created_at_auto_now_add(self):
+        # Record time before creation
+        before = timezone.now()
+        order = Order.objects.create(
+            user=self.user,
+            cart=self.cart,
+            total_price=Decimal("0.00"),
+            shipping_address="1111 Time Ave"
+        )
+        # created_at should be set on save() and be >= before
+        self.assertGreaterEqual(order.created_at, before)
+        # And not in the future (<= now)
+        self.assertLessEqual(order.created_at, timezone.now())
+
+
+    def test_cart_one_to_one_constraint(self):
+        # Only one Order per Cart; second creation should error
+        Order.objects.create(
+            user=self.user,
+            cart=self.cart,
+            total_price=Decimal("0.00"),
+            shipping_address="2222 Single Rd"
+        )
+        with self.assertRaises(IntegrityError):
+            Order.objects.create(
+                user=self.user,
+                cart=self.cart,
+                total_price=Decimal("0.00"),
+                shipping_address="3333 Duplicate Dr"
+            )
+
+
+    def test_deleting_cart_cascades_to_order(self):
+        # Deleting the cart should cascade delete the linked Order
+        order = Order.objects.create(
+            user=self.user,
+            cart=self.cart,
+            total_price=Decimal("0.00"),
+            shipping_address="4444 Cascade Ct"
+        )
+        # Remove the cart
+        self.cart.delete()
+        # Order should be removed from the DB
+        with self.assertRaises(Order.DoesNotExist):
+            Order.objects.get(pk=order.pk)
