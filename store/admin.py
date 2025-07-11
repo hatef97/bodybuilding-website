@@ -108,3 +108,35 @@ class CartAdmin(admin.ModelAdmin):
         """Total price for all items in the cart."""
         return obj.total_price()
     total_price_display.short_description = 'Total Price'
+
+
+
+@admin.register(CartItem)
+class CartItemAdmin(admin.ModelAdmin):
+   
+    """
+    Admin interface for the CartItem model.
+    Allows direct management of cart items with computed total price.
+    """
+    list_display = ('cart', 'user', 'product', 'quantity', 'total_price_display')
+    list_editable = ('quantity',)
+    list_filter = ('product', 'cart__user')
+    search_fields = (
+        'product__name',
+        'cart__user__username',
+        'cart__user__email',
+    )
+    readonly_fields = ('total_price_display',)
+    ordering = ('-cart__created_at',)
+
+    def user(self, obj):
+        """Retrieve the user associated with the cart."""
+        return obj.cart.user
+    user.short_description = 'User'
+    user.admin_order_field = 'cart__user__username'
+
+    def total_price_display(self, obj):
+        """Display the computed total price for this cart item."""
+        return obj.total_price()
+    total_price_display.short_description = 'Total Price'
+    total_price_display.admin_order_field = 'quantity'
