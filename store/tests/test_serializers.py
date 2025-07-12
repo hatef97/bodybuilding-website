@@ -6,7 +6,7 @@ from rest_framework.test import APITestCase, APIRequestFactory
 from rest_framework.exceptions import ValidationError
 
 from store.models import Product, Cart, CartItem
-from store.serializers import ProductSerializer, CartItemSerializer
+from store.serializers import ProductSerializer, CartItemSerializer, CartSerializer
 from core.models import CustomUser as User
 
 
@@ -253,3 +253,100 @@ class CartItemSerializerTests(APITestCase):
         self.assertEqual(updated.quantity, update_data['quantity'])
         self.assertEqual(updated.product, self.product)
         self.assertEqual(updated.cart, self.cart)
+
+
+
+class CartSerializerTests(APITestCase):
+    """
+    APITestCase suite for CartSerializer, covering field inclusion, nested items,
+    total_price calculation, create with CurrentUserDefault, and update behavior.
+    """
+
+    def setUp(self):
+        # Setup request and context
+        self.factory = APIRequestFactory()
+        self.request = self.factory.get('/')
+        # Create two users
+        self.user = User.objects.create_user(username='user1', email='user1@example.com', password='pass')
+        self.other_user = User.objects.create_user(username='user2', email='user2@example.com', password='pass')
+        # Authenticate request
+        self.request.user = self.user
+        # Create a cart for user
+        self.cart = Cart.objects.create(user=self.user)
+        # Create products
+        self.p1 = Product.objects.create(name='P1', description='', price=Decimal('1.00'), stock=5)
+        self.p2 = Product.objects.create(name='P2', description='', price=Decimal('2.00'), stock=5)
+        # Add items
+        CartItem.objects.create(cart=self.cart, product=self.p1, quantity=2)  # total 2.00
+        CartItem.objects.create(cart=self.cart, product=self.p2, quantity=3)  # total 6.00
+
+
+    def test_fields_present(self):
+        """
+        Serialized output includes id, user, items, total_price, created_at.
+        """
+        serializer = CartSerializer(self.cart, context={'request': self.request})
+        data = serializer.data
+        expected_keys = {'id', 'user', 'items', 'total_price', 'created_at'}
+        self.assertSetEqual(set(data.keys()), expected_keys)
+
+
+    def test_nested_items_serialization(self):
+        """
+        items field should list serialized CartItem entries.
+        """
+        serializer = CartSerializer(self.cart, context={'request': self.request})
+        items = serializer.data['items']
+        # Should have two items
+        self.assertEqual(len(items), 2)
+        # Check item structure
+        for item in items:
+            self.assertIn('id', item)
+            self.assertIn('product', item)
+            self.assertIn('quantity', item)
+            self.assertIn('total_price', item)
+
+
+    def test_total_price_calculation(self):
+        """
+        total_price should equal sum of CartItem total_price values.
+        """
+        serializer = CartSerializer(self.cart, context={'request': self.request})
+        # 2*1.00 + 3*2.00 = 2 + 6 = 8.00
+        self.assertEqual(serializer.data['total_price'], Decimal('8.00'))
+
+
+    def test_create_default_user(self):
+        """
+        Creating without user field should assign CurrentUserDefault.
+        """
+        data = {}  # no user provided
+        serializer = CartSerializer(data=data, context={'request': self.request})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        new_cart = serializer.save()
+        self.assertEqual(new_cart.user, self.user)
+
+
+    def test_update_user_field(self):
+        """
+        Updating the user field should change cart ownership.
+        """
+        data = {'user': self.other_user.id}
+        serializer = CartSerializer(self.cart, data=data)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        updated = serializer.save()
+        self.assertEqual(updated.user, self.other_user)
+
+
+    def test_cannot_set_total_price_or_created_at(self):
+        """
+        Read-only fields total_price and created_at should be ignored or disallowed on input.
+        """
+        data = {'total_price': '100.00', 'created_at': '2000-01-01T00:00:00Z'}
+        serializer = CartSerializer(self.cart, data=data, partial=True)
+        # is_valid should be True (fields ignored)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        updated = serializer.save()
+        # values unchanged
+        self.assertNotEqual(updated.total_price, Decimal('100.00'))
+        self.assertNotEqual(updated.created_at.isoformat(), '2000-01-01T00:00:00+00:00')

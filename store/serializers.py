@@ -90,7 +90,7 @@ class CartSerializer(serializers.ModelSerializer):
     )
     items = CartItemSerializer(source='cart_items', many=True, read_only=True)
     total_price = serializers.DecimalField(
-        source='total_price', max_digits=10, decimal_places=2, read_only=True
+        max_digits=10, decimal_places=2, read_only=True
     )
     created_at = serializers.DateTimeField(read_only=True)
 
