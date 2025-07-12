@@ -121,7 +121,7 @@ class OrderSerializer(serializers.ModelSerializer):
     status = serializers.ChoiceField(choices=Order.ORDER_STATUS_CHOICES, default='pending')
     items = CartItemSerializer(source='cart.cart_items', many=True, read_only=True)
     total_price = serializers.DecimalField(
-        source='total_price', max_digits=10, decimal_places=2, read_only=True
+        max_digits=10, decimal_places=2, read_only=True
     )
     created_at = serializers.DateTimeField(read_only=True)
 

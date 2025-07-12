@@ -5,8 +5,8 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APITestCase, APIRequestFactory
 from rest_framework.exceptions import ValidationError
 
-from store.models import Product, Cart, CartItem
-from store.serializers import ProductSerializer, CartItemSerializer, CartSerializer
+from store.models import Product, Cart, CartItem, Order
+from store.serializers import ProductSerializer, CartItemSerializer, CartSerializer, OrderSerializer
 from core.models import CustomUser as User
 
 
@@ -350,3 +350,126 @@ class CartSerializerTests(APITestCase):
         # values unchanged
         self.assertNotEqual(updated.total_price, Decimal('100.00'))
         self.assertNotEqual(updated.created_at.isoformat(), '2000-01-01T00:00:00+00:00')
+
+
+
+class OrderSerializerTests(APITestCase):
+    """
+    APITestCase suite for OrderSerializer, covering field inclusion, nested items,
+    total_price, create and update behavior, and read-only enforcement.
+    """
+
+    def setUp(self):
+        # Setup request with authenticated user
+        self.factory = APIRequestFactory()
+        self.request = self.factory.post('/')
+        self.user = User.objects.create_user(
+            username='orderuser', email='order@example.com', password='pass'
+        )
+        self.request.user = self.user
+
+        # Create Cart and CartItems for the order
+        self.cart = Cart.objects.create(user=self.user)
+        # Products
+        self.p1 = Product.objects.create(
+            name='Prod1', description='D1', price=Decimal('3.00'), stock=10
+        )
+        self.p2 = Product.objects.create(
+            name='Prod2', description='D2', price=Decimal('4.50'), stock=5
+        )
+        # Cart items
+        CartItem.objects.create(cart=self.cart, product=self.p1, quantity=2)  # total 6.00
+        CartItem.objects.create(cart=self.cart, product=self.p2, quantity=1)  # total 4.50
+
+        # Valid data for order creation
+        self.valid_data = {
+            'shipping_address': '123 Test St.'
+            # status defaults to 'pending'; user defaulted; items read-only
+        }
+
+
+    def test_fields_present(self):
+        """
+        Serialized output includes id, user, status, items, total_price, shipping_address, created_at.
+        """
+        # First create an order
+        order = Order.objects.create(user=self.user, cart=self.cart, shipping_address='123 Test St.')
+        serializer = OrderSerializer(order, context={'request': self.request})
+        data = serializer.data
+        expected_keys = {'id', 'user', 'status', 'items', 'total_price', 'shipping_address', 'created_at'}
+        self.assertSetEqual(set(data.keys()), expected_keys)
+
+
+    def test_nested_items_and_total_price(self):
+        """
+        items lists CartItems and total_price sums them.
+        """
+        order = Order.objects.create(user=self.user, cart=self.cart, shipping_address='Addr')
+        serializer = OrderSerializer(order, context={'request': self.request})
+        items = serializer.data['items']
+        self.assertEqual(len(items), 2)
+        # Total should be 6.00 + 4.50 = 10.50
+        self.assertEqual(serializer.data['total_price'], Decimal('10.50'))
+
+
+    def test_create_order_default_fields(self):
+        """
+        Creating via serializer should set user from request and status default.
+        """
+        serializer = OrderSerializer(data=self.valid_data, context={'request': self.request})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        order = serializer.save(cart=self.cart)
+        self.assertIsInstance(order, Order)
+        self.assertEqual(order.user, self.user)
+        self.assertEqual(order.cart, self.cart)
+        self.assertEqual(order.status, 'pending')
+        self.assertEqual(order.shipping_address, self.valid_data['shipping_address'])
+        # Check computed total price
+        self.assertEqual(order.total_price, Decimal('10.50'))
+
+
+    def test_update_status_and_address(self):
+        """
+        Partial update should allow changing only status and shipping_address.
+        """
+        order = Order.objects.create(user=self.user, cart=self.cart, shipping_address='Old Addr')
+        update_data = {'status': 'completed', 'shipping_address': 'New Addr'}
+        serializer = OrderSerializer(order, data=update_data, partial=True)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        updated = serializer.save()
+        self.assertEqual(updated.status, 'completed')
+        self.assertEqual(updated.shipping_address, 'New Addr')
+
+
+    def test_read_only_fields_ignored(self):
+        """
+        Read-only fields user, items, total_price, created_at cannot be overwritten.
+        """
+        order = Order.objects.create(user=self.user, cart=self.cart, shipping_address='Addr')
+        data = {
+            'user': 999,
+            'items': [],
+            'total_price': '999.99',
+            'created_at': '2000-01-01T00:00:00Z'
+        }
+        serializer = OrderSerializer(order, data=data, partial=True)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        saved = serializer.save()
+        # original user remains
+        self.assertEqual(saved.user, self.user)
+        # total_price unchanged
+        self.assertEqual(saved.total_price, order.total_price)
+        # shipping_address unchanged
+        self.assertEqual(saved.shipping_address, order.shipping_address)
+        # items unchanged length
+        self.assertEqual(list(saved.cart.cart_items.all()).__len__(), 2)
+
+
+    def test_invalid_status_choice(self):
+        """
+        Serializer should reject invalid status values.
+        """
+        order = Order.objects.create(user=self.user, cart=self.cart, shipping_address='Addr')
+        serializer = OrderSerializer(order, data={'status': 'invalid'}, partial=True)
+        with self.assertRaises(ValidationError):
+            serializer.is_valid(raise_exception=True)
