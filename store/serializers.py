@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
-from .models import Product
+from .models import Product, Cart, CartItem
+from core.models import CustomUser as User
 
 
 
@@ -57,3 +58,22 @@ class ProductSerializer(serializers.ModelSerializer):
         Override update to allow partial updates and maintain business rules.
         """
         return super().update(instance, validated_data)
+
+
+
+class CartItemSerializer(serializers.ModelSerializer):
+    """
+    Serializer for CartItem, nested under Cart. Supports read/write of product and quantity.
+    """
+    product = ProductSerializer(read_only=True)
+    product_id = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.all(), source='product', write_only=True
+    )
+    total_price = serializers.DecimalField(
+        source='total_price', max_digits=10, decimal_places=2, read_only=True
+    )
+
+    class Meta:
+        model = CartItem
+        fields = ['id', 'product', 'product_id', 'quantity', 'total_price']
+        read_only_fields = ('id', 'product', 'total_price')
