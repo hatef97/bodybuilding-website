@@ -3,9 +3,10 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import get_object_or_404
+from django.db.models import Prefetch
 
 from .models import Product, CartItem, Cart
-from .serializers import ProductSerializer, CartItemSerializer
+from .serializers import ProductSerializer, CartItemSerializer, CartSerializer
 
 
 
@@ -111,3 +112,57 @@ class CartItemViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         # Only quantity can change; cart/product remain fixed by serializer
         serializer.save()
+
+
+
+class IsOwnerOrReadOnly(permissions.BasePermission):
+    """
+    Only the owner of an object may edit it; everyone may read.
+    """
+    def has_object_permission(self, request, view, obj):
+        # Read-only are allowed
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        # Otherwise, only owner may write
+        return obj.user == request.user
+
+
+
+class CartViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for Cart.
+    
+    - list:    list current user's carts
+    - retrieve: get a single cart with nested items
+    - create:  make a new cart (user set from request)
+    - update:  change only user (rare) or metadata
+    - destroy: delete a cart
+    """
+    serializer_class = CartSerializer
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['created_at']
+    ordering_fields = ['created_at', 'total_price']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        # Only show the requesting user's carts,
+        # prefetch items + their products to avoid N+1.
+        return (
+            Cart.objects.filter(user=self.request.user)
+                        .prefetch_related(
+                            Prefetch(
+                                'cart_items',
+                                queryset=CartItem.objects.select_related('product')
+                            )
+                        )
+        )
+
+    def perform_create(self, serializer):
+        # Tie the new Cart to the current user
+        serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):
+        # Only allow metadata updates (user may be changed by admin)
+        serializer.save()
+        
