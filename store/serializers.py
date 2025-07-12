@@ -144,7 +144,6 @@ class OrderSerializer(serializers.ModelSerializer):
 
 
 
-# New serializer for Payment model
 class PaymentSerializer(serializers.ModelSerializer):
     """
     Serializer for Payment model, exposing status control and order relation.
