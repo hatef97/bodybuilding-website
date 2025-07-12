@@ -1,10 +1,11 @@
 from rest_framework import viewsets, permissions, filters
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from django_filters.rest_framework import DjangoFilterBackend
+from django.shortcuts import get_object_or_404
 
-from .models import Product
-from .serializers import ProductSerializer
+from .models import Product, CartItem, Cart
+from .serializers import ProductSerializer, CartItemSerializer
 
 
 
