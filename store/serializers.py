@@ -11,9 +11,10 @@ class ProductSerializer(serializers.ModelSerializer):
     Includes validation to ensure price and stock integrity.
     """
     # Include a read-only field for stock availability
-    is_in_stock = serializers.BooleanField(source='is_in_stock', read_only=True)
+    is_in_stock = serializers.BooleanField(read_only=True)
     # Use URL for image representation; allow null/blank
     image_url = serializers.ImageField(source='image', use_url=True, required=False, allow_null=True)
+    price = serializers.DecimalField(max_digits=10, decimal_places=4)
 
     class Meta:
         model = Product
