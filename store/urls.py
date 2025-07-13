@@ -3,12 +3,13 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework_nested.routers import NestedSimpleRouter
 
-from .views import ProductViewSet, CartItemViewSet
+from .views import ProductViewSet, CartItemViewSet, CartViewSet
 
 
 
 router = DefaultRouter()
 router.register(r'products', ProductViewSet, basename='product')
+router.register(r'carts', CartViewSet, basename='cart')
 
 
 
