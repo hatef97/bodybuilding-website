@@ -1,6 +1,14 @@
 from django.db import models
 from django.conf import settings
-from django.utils import timezone
+
+
+
+class Category(models.Model):
+    name = models.CharField(max_length=255, unique=True)
+    description = models.TextField(blank=True)
+
+    def __str__(self):
+        return self.name
 
 
 

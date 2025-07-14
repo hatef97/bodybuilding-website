@@ -27,6 +27,7 @@ urlpatterns = [
     path('progress/', include('progress.urls')),    # Include progress-related API URLs
     path('community/', include('community.urls')),    # Include community-related API URLs
     path('content/', include('content.urls')),    # Include content-related API URLs
+    path('store/', include('store.urls')),    # Include store-related API URLs
 ]
 
 
