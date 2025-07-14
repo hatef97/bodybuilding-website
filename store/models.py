@@ -12,6 +12,12 @@ class Category(models.Model):
 
 
 
+class Discount(models.Model):
+    discount = models.FloatField()
+    description = models.CharField(max_length=255)
+
+
+
 # Product model: Represents an item available for purchase
 class Product(models.Model):
     name = models.CharField(max_length=255)
