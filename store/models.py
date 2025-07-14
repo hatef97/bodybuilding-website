@@ -53,6 +53,23 @@ class Customer(models.Model):
 
 
 
+# Order model: Represents a completed order for a user
+class Order(models.Model):
+    ORDER_STATUS_PAID = 'p'
+    ORDER_STATUS_UNPAID = 'u'
+    ORDER_STATUS_CANCELED = 'c'
+    ORDER_STATUS = [
+        (ORDER_STATUS_PAID,'Paid'),
+        (ORDER_STATUS_UNPAID,'Unpaid'),
+        (ORDER_STATUS_CANCELED,'Canceled'),
+    ]
+    
+    customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name='orders')
+    datetime_created = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=1, choices=ORDER_STATUS, default=ORDER_STATUS_UNPAID)
+
+
+
 # Cart model: Represents a shopping cart for a user
 class Cart(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
@@ -81,31 +98,6 @@ class CartItem(models.Model):
     def total_price(self):
         """Calculate total price for this item (quantity * product price)."""
         return self.quantity * self.product.price
-
-
-
-# Order model: Represents a completed order for a user
-class Order(models.Model):
-    ORDER_STATUS_CHOICES = [
-        ('pending', 'Pending'),
-        ('completed', 'Completed'),
-        ('shipped', 'Shipped'),
-    ]
-    
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    cart = models.OneToOneField(Cart, on_delete=models.CASCADE)
-    status = models.CharField(max_length=20, choices=ORDER_STATUS_CHOICES, default='pending')
-    total_price = models.DecimalField(max_digits=10, decimal_places=2)
-    shipping_address = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"Order #{self.id} by {self.user}"
-
-    def save(self, *args, **kwargs):
-        # Set total price of the order based on the cart
-        self.total_price = self.cart.total_price()
-        super().save(*args, **kwargs)
 
 
 
