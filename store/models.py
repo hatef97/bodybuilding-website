@@ -1,6 +1,8 @@
 from django.db import models
 from django.conf import settings
 
+from uuid import uuid4
+
 
 
 class Category(models.Model):
@@ -119,18 +121,9 @@ class Comment(models.Model):
 
 
 # Cart model: Represents a shopping cart for a user
-class Cart(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    products = models.ManyToManyField(Product, through="CartItem")
+class Cart(models.Model):  
+    id = models.UUIDField(primary_key=True, default=uuid4)
     created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"Cart of {self.user}"
-
-    def total_price(self):
-        """Calculate the total price of items in the cart."""
-        total = sum([item.total_price() for item in self.cart_items.all()])
-        return total
 
 
 
