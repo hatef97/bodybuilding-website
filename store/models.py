@@ -47,11 +47,6 @@ class Customer(models.Model):
     @property
     def full_name(self):
         return f'{self.user.first_name} {self.user.last_name}'
-    
-    class Meta:
-        permissions = [
-            ('send_private_email', 'Can send private email to user by the button'),
-        ]
 
 
 
