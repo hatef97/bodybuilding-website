@@ -4,7 +4,7 @@ from django.urls import reverse
 from django.utils.html import format_html
 from django.utils.http import urlencode
 
-from .models import *
+from . import models
 
 
 
@@ -166,39 +166,7 @@ class CartAdmin(admin.ModelAdmin):
 
 
 
-@admin.register(CartItem)
-class CartItemAdmin(admin.ModelAdmin):
-   
-    """
-    Admin interface for the CartItem model.
-    Allows direct management of cart items with computed total price.
-    """
-    list_display = ('cart', 'user', 'product', 'quantity', 'total_price_display')
-    list_editable = ('quantity',)
-    list_filter = ('product', 'cart__user')
-    search_fields = (
-        'product__name',
-        'cart__user__username',
-        'cart__user__email',
-    )
-    readonly_fields = ('total_price_display',)
-    ordering = ('-cart__created_at',)
-
-    def user(self, obj):
-        """Retrieve the user associated with the cart."""
-        return obj.cart.user
-    user.short_description = 'User'
-    user.admin_order_field = 'cart__user__username'
-
-    def total_price_display(self, obj):
-        """Display the computed total price for this cart item."""
-        return obj.total_price()
-    total_price_display.short_description = 'Total Price'
-    total_price_display.admin_order_field = 'quantity'
-
-
-
-@admin.register(Payment)
+@admin.register(models.Payment)
 class PaymentAdmin(admin.ModelAdmin):
     list_display = ('order', 'user', 'payment_date', 'amount', 'status')
     list_editable = ('status',)
@@ -236,4 +204,45 @@ class PaymentAdmin(admin.ModelAdmin):
                 updated += 1
         self.message_user(request, f"{updated} payment(s) marked as failed.")
     fail_payments.short_description = 'Mark selected payments as failed'
-    
+
+
+
+@admin.register(models.Category)
+class CategoryAdmin(admin.ModelAdmin):
+    list_display     = ['name', 'description_excerpt', 'num_of_products']
+    search_fields    = ['name', 'description']
+    ordering         = ['name']
+    list_per_page    = 10
+    actions          = ['clear_descriptions']
+
+    def get_queryset(self, request):
+        # Annotate each Category with the count of related Products (reverse relation is 'products')
+        return super().get_queryset(request) \
+                       .annotate(product_count=Count('products'))
+
+    @admin.display(ordering='product_count', description='# Products')
+    def num_of_products(self, category):
+        # Link into the Product changelist filtered by this category
+        url = (
+            reverse('admin:store_product_changelist')  # adjust 'store' to your app_label
+            + '?'
+            + urlencode({'category__id__exact': category.id})
+        )
+        return format_html('<a href="{}">{}</a>', url, category.product_count)
+
+    @admin.display(description='Description')
+    def description_excerpt(self, category):
+        if not category.description:
+            return format_html('<span style="color: #777;">—</span>')
+        text = category.description
+        return text if len(text) <= 75 else f'{text[:75]}…'
+
+    @admin.action(description='Clear descriptions for selected categories')
+    def clear_descriptions(self, request, queryset):
+        updated = queryset.update(description='')
+        self.message_user(
+            request,
+            f'Description cleared on {updated} category(ies).',
+            messages.SUCCESS,
+        )
+        
