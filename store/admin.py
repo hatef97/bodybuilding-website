@@ -1,71 +1,87 @@
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.db.models import Count
+from django.urls import reverse
 from django.utils.html import format_html
+from django.utils.http import urlencode
 
-from .models import Product, Cart, CartItem, Order, Payment
+from .models import *
 
 
 
-@admin.register(Product)
+class StockFilter(admin.SimpleListFilter):
+    LESS_THAN_3 = '<3'
+    BETWEEN_3_and_10 = '3<=10'
+    MORE_THAN_10 = '>10'
+    title = 'Critical Stock Status'
+    parameter_name = 'stock'
+
+    def lookups(self, request, model_admin):
+        return [
+            (StockFilter.LESS_THAN_3, 'High'),
+            (StockFilter.BETWEEN_3_and_10, 'Medium'),
+            (StockFilter.MORE_THAN_10, 'OK'),
+        ]
+    
+    def queryset(self, request, queryset):
+        if self.value() == StockFilter.LESS_THAN_3:
+            return queryset.filter(stock__lt=3)
+        if self.value() == StockFilter.BETWEEN_3_and_10:
+            return queryset.filter(stock__range=(3, 10))
+        if self.value() == StockFilter.MORE_THAN_10:
+            return queryset.filter(stock__gt=10)
+
+
+
+@admin.register(models.Product)
 class ProductAdmin(admin.ModelAdmin):
-    """
-    Admin interface definition for the Product model.
-    Provides list display, filters, search, and custom actions for stock management.
-    """
-    # Columns to display in the list view
-    list_display = (
-        'name',
-        'price',
-        'stock',
-        'is_in_stock',
-        'created_at',
-        'image_thumbnail',
-    )
-    # Allow inline editing of stock and price directly from the list view
-    list_editable = ('price', 'stock')
-    # Filters in the sidebar
-    list_filter = (
-        'created_at',
-        'stock',
-    )
-    # Enable search on name and description fields
-    search_fields = ('name', 'description')
-    # Make certain fields read-only in the form view
-    readonly_fields = ('created_at', 'image_thumbnail')
-    # Add a date-based drill-down navigation by creation date
-    date_hierarchy = 'created_at'
-    # Custom actions available for bulk operations
-    actions = ('mark_out_of_stock', 'restock_selected')
+    list_display = ['name', 'description', 'price', 'category', 'stock', 'image', 'created_at']
+    list_per_page = 10
+    list_editable = ['price']
+    list_select_related = ['category']
+    list_filter = ['created_at', StockFilter]
+    actions = ['clear_stock']
+    search_fields = ['name', ]
 
-    def is_in_stock(self, obj):
-        """Display a boolean icon for stock availability."""
-        return obj.is_in_stock()
-    is_in_stock.boolean = True
-    is_in_stock.short_description = 'In Stock'
 
-    def image_thumbnail(self, obj):
-        """Render a small thumbnail of the product image, if available."""
-        if obj.image:
-            return format_html(
-                '<img src="{}" style="height:50px; border-radius:4px;"/>',
-                obj.image.url
-            )
-        return format_html('<span style="color:#999;">No image</span>')
-    image_thumbnail.short_description = 'Image Preview'
+    def get_queryset(self, request):
+        return super().get_queryset(request) \
+                .prefetch_related('comments') \
+                .annotate(
+                    comments_count=Count('comments'),
+                )
 
-    def mark_out_of_stock(self, request, queryset):
-        """Custom action to set stock to zero for selected products."""
-        updated = queryset.update(stock=0)
-        self.message_user(request, f"{updated} product(s) marked as out of stock.")
-    mark_out_of_stock.short_description = 'Mark selected products as out of stock'
+    def stock_status(self, product):
+        if product.stock < 10:
+            return 'Low'
+        if product.stock > 50:
+            return 'High'
+        return 'Medium'
+    
+    @admin.display(description='# comments', ordering='comments_count')
+    def num_of_comments(self, product):
+        url = (
+            reverse('admin:store_comment_changelist') 
+            + '?'
+            + urlencode({
+                'product__id': product.id,
+            })
+        )
+        return format_html('<a href="{}">{}</a>', url, product.comments_count)
+        
+    
+    @admin.display(ordering='category__name')
+    def product_category(self, product):
+        return product.category.name
 
-    def restock_selected(self, request, queryset):
-        """Custom action to restore stock to a default level for selected products."""
-        default_amount = 10
-        for product in queryset:
-            product.stock += default_amount
-            product.save()
-        self.message_user(request, f"Restocked {queryset.count()} product(s) by {default_amount} units each.")
-    restock_selected.short_description = 'Restock selected products by 10 units'
+    
+    @admin.action(description='Clear inventory')
+    def clear_inventory(self, request, queryset):
+        update_count = queryset.update(inventory=0)
+        self.message_user(
+            request,
+            f'{update_count} of products inventories cleared to zero.',
+            messages.ERROR,
+        )
 
 
 
