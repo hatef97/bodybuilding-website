@@ -152,43 +152,17 @@ class OrderAdmin(admin.ModelAdmin):
 
 # Inline admin for CartItem to embed in Cart
 class CartItemInline(admin.TabularInline):
-    model = CartItem
-    extra = 0  # Do not show extra empty forms
-    readonly_fields = ('product', 'quantity', 'total_price_display')
-    can_delete = False
-    verbose_name = 'Cart Item'
-    verbose_name_plural = 'Cart Items'
-
-    def total_price_display(self, obj):
-        """Display computed total price for each cart item."""
-        return obj.total_price()
-    total_price_display.short_description = 'Total Price'
+    model = models.CartItem
+    fields = ['id', 'product', 'quantity']
+    extra = 0
+    min_num = 1
 
 
 
-@admin.register(Cart)
+@admin.register(models.Cart)
 class CartAdmin(admin.ModelAdmin):
-    """
-    Admin configuration for the Cart model.
-    Includes inline display of CartItems, price summaries, and filtering.
-    """
-    list_display = ('user', 'created_at', 'item_count', 'total_price_display')
-    list_filter = ('created_at', 'user')
-    search_fields = ('user__username', 'user__email')
-    date_hierarchy = 'created_at'
-    inlines = (CartItemInline,)
-    readonly_fields = ('created_at', 'item_count', 'total_price_display')
-    ordering = ('-created_at',)
-
-    def item_count(self, obj):
-        """Count of items in the cart."""
-        return obj.cart_items.count()
-    item_count.short_description = 'Items Count'
-
-    def total_price_display(self, obj):
-        """Total price for all items in the cart."""
-        return obj.total_price()
-    total_price_display.short_description = 'Total Price'
+    list_display = ['id', 'created_at']
+    inlines = [CartItemInline]
 
 
 
