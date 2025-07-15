@@ -112,6 +112,22 @@ class CommentAdmin(admin.ModelAdmin):
 
 
 
+class OrderItemInline(admin.TabularInline):
+    model = models.OrderItem
+    fields = ['product', 'quantity', 'price']
+    extra = 0
+    min_num = 1
+    readonly_fields = ['price']
+
+
+
+@admin.register(models.OrderItem)
+class OrderItemAdmin(admin.ModelAdmin):
+    list_display = ['order', 'product', 'quantity', 'price']
+    autocomplete_fields = ['product', ]
+
+
+
 # Inline admin for CartItem to embed in Cart
 class CartItemInline(admin.TabularInline):
     model = CartItem
