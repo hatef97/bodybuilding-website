@@ -128,6 +128,28 @@ class OrderItemAdmin(admin.ModelAdmin):
 
 
 
+@admin.register(models.Order)
+class OrderAdmin(admin.ModelAdmin):
+    list_display = ['id', 'customer', 'status', 'datetime_created', 'num_of_items']
+    list_editable = ['status']
+    list_per_page = 10
+    ordering = ['-datetime_created']
+    inlines = [OrderItemInline]
+
+    def get_queryset(self, request):
+        return super() \
+                .get_queryset(request) \
+                .prefetch_related('items') \
+                .annotate(
+                    items_count=Count('items')
+                )
+
+    @admin.display(ordering='items_count', description='# items')
+    def num_of_items(self, order):
+        return order.items_count
+
+
+
 # Inline admin for CartItem to embed in Cart
 class CartItemInline(admin.TabularInline):
     model = CartItem
@@ -199,30 +221,6 @@ class CartItemAdmin(admin.ModelAdmin):
         return obj.total_price()
     total_price_display.short_description = 'Total Price'
     total_price_display.admin_order_field = 'quantity'
-
-
-
-@admin.register(Order)
-class OrderAdmin(admin.ModelAdmin):
-    list_display = ('id', 'user', 'status', 'total_price', 'shipping_address_short', 'created_at')
-    list_editable = ('status',)
-    list_filter = ('status', 'created_at', 'user')
-    search_fields = ('id', 'user__username', 'user__email', 'shipping_address')
-    date_hierarchy = 'created_at'
-    readonly_fields = ('total_price', 'created_at', 'cart_items_summary')
-    ordering = ('-created_at',)
-    fields = ('user', 'status', 'shipping_address', 'total_price', 'cart_items_summary', 'created_at')
-
-    def shipping_address_short(self, obj):
-        return (obj.shipping_address[:50] + '...') if len(obj.shipping_address) > 50 else obj.shipping_address
-    shipping_address_short.short_description = 'Shipping Address'
-
-    def cart_items_summary(self, obj):
-        """Display a summary of cart items for this order."""
-        items = obj.cart.cart_items.select_related('product')
-        lines = [f"{item.product.name} (x{item.quantity}) - {item.total_price()}" for item in items]
-        return format_html('<br>'.join(lines))
-    cart_items_summary.short_description = 'Cart Items'
 
 
 
