@@ -103,6 +103,15 @@ class CustomerAdmin(admin.ModelAdmin):
 
 
 
+@admin.register(models.Comment)
+class CommentAdmin(admin.ModelAdmin):
+    list_display = ['id', 'product', 'status', ]
+    list_editable = ['status']
+    list_per_page = 10
+    autocomplete_fields = ['product', ]   
+
+
+
 # Inline admin for CartItem to embed in Cart
 class CartItemInline(admin.TabularInline):
     model = CartItem
