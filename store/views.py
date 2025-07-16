@@ -13,7 +13,7 @@ from django.db.models import Prefetch
 from django_filters.rest_framework import DjangoFilterBackend
 from django.views.generic import TemplateView
 
-from .models import Category, Product, PageContent, TeamMember, Customer
+from .models import *
 from .paginations import DefaultPagination
 from .serializers import *
 from .permissions import IsAdminOrReadOnly, SendPrivateEmailToCustomerPermission
@@ -44,20 +44,23 @@ class ProductViewSet(ModelViewSet):
 
 
 
-class IsOwnerOfCart(permissions.BasePermission):
-    """
-    Permission that only allows owners of a cart to manage its items.
-    """
-    def has_permission(self, request, view):
-        cart_pk = view.kwargs.get('cart_pk')
-        if not cart_pk:
-            return False
-        cart = get_object_or_404(Cart, pk=cart_pk)
-        return cart.user == request.user
+class CategoryViewSet(ModelViewSet):
+    serializer_class = CategorySerializer
+    queryset = Category.objects.prefetch_related('products').all()
+    permission_classes = [IsAdminOrReadOnly]
+    
 
-    def has_object_permission(self, request, view, obj):
-        # obj is a CartItem
-        return obj.cart.user == request.user
+    def get_serializer_context(self):
+        return {'request': self.request}
+
+    def destroy(self, request, pk=None):
+        category = get_object_or_404(Category, pk=pk)
+        if category.products.exists():
+            return Response(
+                {'error': 'Cannot delete category with existing products. Remove products first.'},
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+        return super().destroy(request, pk)
 
 
 
