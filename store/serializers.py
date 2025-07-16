@@ -235,6 +235,13 @@ class OrderCreateSerializer(serializers.Serializer):
 
 
 
+class OrderUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Order
+        fields = ['status']
+
+
+
 class PaymentSerializer(serializers.ModelSerializer):
     """
     Serializer for Payment model, exposing status control and order relation.
