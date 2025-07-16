@@ -237,119 +237,120 @@ class CartItemModelTest(TestCase):
 class OrderModelTest(TestCase):
 
     def setUp(self):
-        # Create a test user to associate with Order
+        # Create a user and customer for the order
         self.user = User.objects.create_user(
-            email="orderuser@example.com",
-            username="orderuser",
-            password="securepass"
+            username='testuser',
+            first_name='John',
+            last_name='Doe',
+            email='john@example.com',
+            password='testpassword123'
         )
-        # Create a product with a fixed price for predictable calculations
+        Customer.objects.filter(user=self.user).delete()
+        self.customer = Customer.objects.create(
+            user=self.user,
+            phone_number="123-456-7890"
+        )
+
+        # Create an order instance
+        self.order = Order.objects.create(
+            customer=self.customer,
+            status=Order.ORDER_STATUS_UNPAID
+        )
+
+    def test_order_creation(self):
+        """Test that an Order instance is created correctly."""
+        self.assertEqual(self.order.customer, self.customer)
+        self.assertEqual(self.order.status, Order.ORDER_STATUS_UNPAID)
+        self.assertIsNotNone(self.order.datetime_created)
+
+    def test_order_status_choices(self):
+        """Test that status choices are correctly stored."""
+        self.order.status = Order.ORDER_STATUS_PAID
+        self.order.save()
+        self.assertEqual(self.order.status, Order.ORDER_STATUS_PAID)
+
+        self.order.status = Order.ORDER_STATUS_CANCELED
+        self.order.save()
+        self.assertEqual(self.order.status, Order.ORDER_STATUS_CANCELED)
+
+    def test_order_default_status(self):
+        """Test that the default order status is 'unpaid'."""
+        new_order = Order.objects.create(customer=self.customer)
+        self.assertEqual(new_order.status, Order.ORDER_STATUS_UNPAID)
+
+
+
+class OrderItemModelTest(TestCase):
+
+    def setUp(self):
+        # Create necessary related objects
+        self.user = User.objects.create_user(
+            username='testuser',
+            first_name='John',
+            last_name='Doe',
+            email='john@example.com',
+            password='testpassword123'
+        )
+        Customer.objects.filter(user=self.user).delete()
+        self.customer = Customer.objects.create(
+            user=self.user,
+            phone_number="123-456-7890"
+        )
+        self.category = Category.objects.create(name='Office Supplies')
+        self.discount = Discount.objects.create(discount=10.0, description="Seasonal Discount")
+
         self.product = Product.objects.create(
-            name="Widget",
-            description="A handy widget",
-            price=Decimal("5.00"),  # Unit price
-            stock=50
+            name='Notebook',
+            description='A high-quality notebook.',
+            price=Decimal('5.99'),
+            category=self.category,
+            stock=100
         )
-        # Create a cart tied to our test user
-        self.cart = Cart.objects.create(user=self.user)
-        # Add an item to the cart: 2 widgets at 5.00 each => total 10.00
-        CartItem.objects.create(cart=self.cart, product=self.product, quantity=2)
+        self.product.discounts.add(self.discount)
 
-
-    def test_str_returns_order_id_and_user(self):
-        # Order.__str__ should output "Order #<id> by <user>"
-        order = Order.objects.create(
-            user=self.user,
-            cart=self.cart,
-            total_price=Decimal("0.00"),  # Dummy, overridden in save()
-            shipping_address="123 Test Lane"
+        self.order = Order.objects.create(
+            customer=self.customer,
+            status=Order.ORDER_STATUS_UNPAID
         )
-        expected = f"Order #{order.id} by {self.user}"
-        self.assertEqual(str(order), expected)
 
-
-    def test_save_sets_total_price_from_cart(self):
-        # Instantiate with incorrect total_price, then save should recalc
-        order = Order(
-            user=self.user,
-            cart=self.cart,
-            total_price=Decimal("999.99"),  # Will be overridden
-            shipping_address="456 Sample Road"
+    def test_order_item_creation(self):
+        """Test creating an OrderItem and its basic fields."""
+        order_item = OrderItem.objects.create(
+            order=self.order,
+            product=self.product,
+            quantity=2,
+            price=Decimal('5.99')
         )
-        order.save()  # triggers recalculation
-        # Expected total is cart.total_price(): 5.00 * 2 = 10.00
-        self.assertEqual(order.total_price, self.cart.total_price())
+        self.assertEqual(order_item.order, self.order)
+        self.assertEqual(order_item.product, self.product)
+        self.assertEqual(order_item.quantity, 2)
+        self.assertEqual(order_item.price, Decimal('5.99'))
 
-
-    def test_default_status_pending(self):
-        # Creating without specifying status defaults to 'pending'
-        order = Order.objects.create(
-            user=self.user,
-            cart=self.cart,
-            total_price=Decimal("0.00"),
-            shipping_address="789 Example Blvd"
+    def test_order_item_price_defaults_to_product_price(self):
+        """Test that price defaults to product price if not provided."""
+        order_item = OrderItem.objects.create(
+            order=self.order,
+            product=self.product,
+            quantity=3
         )
-        self.assertEqual(order.status, 'pending')
+        self.assertEqual(order_item.price, self.product.price)
 
+    def test_unique_together_constraint(self):
+        """Test that an order cannot contain duplicate products."""
+        OrderItem.objects.create(order=self.order, product=self.product, quantity=1, price=Decimal('5.99'))
 
-    def test_status_choices_validation(self):
-        # Assign an invalid status and expect a validation error
-        order = Order(
-            user=self.user,
-            cart=self.cart,
-            total_price=Decimal("0.00"),
-            shipping_address="1010 Error St",
-            status="invalid_status"
+        with self.assertRaises(Exception):  # IntegrityError or Django's built-in catch
+            OrderItem.objects.create(order=self.order, product=self.product, quantity=1, price=Decimal('5.99'))
+
+    def test_order_item_str(self):
+        """Test the __str__ representation of OrderItem."""
+        order_item = OrderItem.objects.create(
+            order=self.order,
+            product=self.product,
+            quantity=4,
+            price=Decimal('5.99')
         )
-        with self.assertRaises(ValidationError):
-            order.full_clean()  # checks choices constraint
-
-
-    def test_created_at_auto_now_add(self):
-        # Record time before creation
-        before = timezone.now()
-        order = Order.objects.create(
-            user=self.user,
-            cart=self.cart,
-            total_price=Decimal("0.00"),
-            shipping_address="1111 Time Ave"
-        )
-        # created_at should be set on save() and be >= before
-        self.assertGreaterEqual(order.created_at, before)
-        # And not in the future (<= now)
-        self.assertLessEqual(order.created_at, timezone.now())
-
-
-    def test_cart_one_to_one_constraint(self):
-        # Only one Order per Cart; second creation should error
-        Order.objects.create(
-            user=self.user,
-            cart=self.cart,
-            total_price=Decimal("0.00"),
-            shipping_address="2222 Single Rd"
-        )
-        with self.assertRaises(IntegrityError):
-            Order.objects.create(
-                user=self.user,
-                cart=self.cart,
-                total_price=Decimal("0.00"),
-                shipping_address="3333 Duplicate Dr"
-            )
-
-
-    def test_deleting_cart_cascades_to_order(self):
-        # Deleting the cart should cascade delete the linked Order
-        order = Order.objects.create(
-            user=self.user,
-            cart=self.cart,
-            total_price=Decimal("0.00"),
-            shipping_address="4444 Cascade Ct"
-        )
-        # Remove the cart
-        self.cart.delete()
-        # Order should be removed from the DB
-        with self.assertRaises(Order.DoesNotExist):
-            Order.objects.get(pk=order.pk)
+        self.assertEqual(str(order_item), '4 x Notebook')
 
 
 
