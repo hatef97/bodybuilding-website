@@ -114,41 +114,22 @@ class CustomerViewSet(ModelViewSet):
 
 
 
-class CartViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint for Cart.
+class CartItemViewSet(ModelViewSet):
+    http_method_names = ['get', 'post', 'patch', 'delete']
+    permission_classes = [IsAuthenticated]
     
-    - list:    list current user's carts
-    - retrieve: get a single cart with nested items
-    - create:  make a new cart (user set from request)
-    - update:  change only user (rare) or metadata
-    - destroy: delete a cart
-    """
-    serializer_class = CartSerializer
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['created_at']
-    ordering_fields = ['created_at', 'total_price']
-    ordering = ['-created_at']
-
     def get_queryset(self):
-        # Only show the requesting user's carts,
-        # prefetch items + their products to avoid N+1.
-        return (
-            Cart.objects.filter(user=self.request.user)
-                        .prefetch_related(
-                            Prefetch(
-                                'cart_items',
-                                queryset=CartItem.objects.select_related('product')
-                            )
-                        )
-        )
-
-    def perform_create(self, serializer):
-        # Tie the new Cart to the current user
-        serializer.save(user=self.request.user)
-
-    def perform_update(self, serializer):
-        # Only allow metadata updates (user may be changed by admin)
-        serializer.save()
+        cart_pk = self.kwargs['cart_pk']
+        return CartItem.objects.select_related('product').filter(cart_id=cart_pk).all()
+    
+    
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return AddCartItemSerializer
+        elif self.request.method == 'PATCH':
+            return UpadateCartItemSerializer
+        return CartItemSerializer 
+    
+    def get_serializer_context(self):
+        return {'cart_pk': self.kwargs['cart_pk']}
         
