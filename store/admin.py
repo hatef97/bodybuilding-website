@@ -209,11 +209,11 @@ class PaymentAdmin(admin.ModelAdmin):
 
 @admin.register(models.Category)
 class CategoryAdmin(admin.ModelAdmin):
-    list_display     = ['name', 'description_excerpt', 'num_of_products']
-    search_fields    = ['name', 'description']
-    ordering         = ['name']
-    list_per_page    = 10
-    actions          = ['clear_descriptions']
+    list_display = ['name', 'description_excerpt', 'num_of_products']
+    search_fields = ['name', 'description']
+    ordering = ['name']
+    list_per_page = 10
+    actions = ['clear_descriptions']
 
     def get_queryset(self, request):
         # Annotate each Category with the count of related Products (reverse relation is 'products')
@@ -245,4 +245,25 @@ class CategoryAdmin(admin.ModelAdmin):
             f'Description cleared on {updated} category(ies).',
             messages.SUCCESS,
         )
-        
+
+
+
+@admin.register(models.Address)
+class AddressAdmin(admin.ModelAdmin):
+    list_display = ['customer', 'province', 'city', 'street']
+    search_fields = [
+        'customer__user__first_name',
+        'customer__user__last_name',
+        'province',
+        'city',
+        'street',
+    ]
+    list_per_page = 20
+    raw_id_fields = ['customer']
+    ordering = ['customer__user__last_name']
+
+    # Optional: display customer’s full name if Customer links to User
+    def customer(self, obj):
+        return f"{obj.customer.user.first_name} {obj.customer.user.last_name}"
+    customer.admin_order_field = 'customer__user__last_name'
+    customer.short_description = 'Customer'
