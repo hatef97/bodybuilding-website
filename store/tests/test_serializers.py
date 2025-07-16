@@ -306,6 +306,102 @@ class CustomerSerializerTest(TestCase):
 
 
 
+class AddCartItemSerializerTest(TestCase):
+
+    def setUp(self):
+        """Set up test data before each test runs."""
+        self.cart = Cart.objects.create()
+
+        self.category = Category.objects.create(name="Electronics", description="Electronic items")
+
+        self.product = Product.objects.create(
+            name="Laptop",
+            description="A high-end gaming laptop.",
+            price=1500.00,
+            category=self.category,
+            stock=10
+        )
+
+
+    def test_valid_cart_item_serialization(self):
+        """Test that valid cart item data serializes correctly."""
+        cart_item = CartItem.objects.create(cart=self.cart, product=self.product, quantity=2)
+        serializer = AddCartItemSerializer(instance=cart_item)
+        
+        expected_data = {
+            "id": cart_item.id,
+            "product": self.product.id,
+            "quantity": 2
+        }
+
+        self.assertEqual(serializer.data, expected_data)
+
+
+    def test_create_new_cart_item(self):
+        """Test that a new cart item is created successfully if it does not exist."""
+        data = {
+            "product": self.product.id,
+            "quantity": 3
+        }
+
+        serializer = AddCartItemSerializer(data=data, context={"cart_pk": self.cart.id})
+        self.assertTrue(serializer.is_valid())
+
+        cart_item = serializer.save()
+
+        self.assertEqual(cart_item.product, self.product)
+        self.assertEqual(cart_item.quantity, 3)
+        self.assertEqual(cart_item.cart_id, self.cart.id)
+
+
+    def test_update_existing_cart_item_quantity(self):
+        """Test that an existing cart item has its quantity increased."""
+        existing_cart_item = CartItem.objects.create(cart=self.cart, product=self.product, quantity=2)
+
+        data = {
+            "product": self.product.id,
+            "quantity": 3  # Adding more of the same product
+        }
+
+        serializer = AddCartItemSerializer(data=data, context={"cart_pk": self.cart.id})
+        self.assertTrue(serializer.is_valid())
+
+        updated_cart_item = serializer.save()
+
+        self.assertEqual(updated_cart_item.id, existing_cart_item.id)  # ✅ Same cart item should be updated
+        self.assertEqual(updated_cart_item.quantity, 5)  # ✅ Quantity should be increased
+
+
+    def test_missing_cart_context_raises_error(self):
+        """Test that a missing 'cart_pk' in context raises a KeyError."""
+        data = {
+            "product": self.product.id,
+            "quantity": 2
+        }
+
+        serializer = AddCartItemSerializer(data=data)  # ❌ No 'cart_pk' in context
+
+        with self.assertRaises(KeyError):
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+
+
+    def test_negative_quantity_raises_error(self):
+        """Test that providing a negative quantity raises a validation error."""
+        data = {
+            "product": self.product.id,
+            "quantity": -1  # Invalid quantity
+        }
+
+        serializer = AddCartItemSerializer(data=data, context={"cart_pk": self.cart.id})
+
+        with self.assertRaises(ValidationError) as context:
+            serializer.is_valid(raise_exception=True)
+
+        self.assertIn("quantity", str(context.exception))
+
+
+
 class CartItemSerializerTests(APITestCase):
     """
     APITestCase suite for CartItemSerializer, covering nested product serialization,
