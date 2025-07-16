@@ -178,6 +178,22 @@ class OrderSerializer(serializers.ModelSerializer):
 
 
 
+class OrderForAdminSerializer(serializers.ModelSerializer):
+    items = OrderItemSerializer(many=True)
+    customer = OrderCustomerSerializer()
+    
+    class Meta:
+        model = Order
+        fields = [
+            'id',
+            'customer',
+            'status',
+            'datetime_created',
+            'items'
+        ] 
+
+
+
 class PaymentSerializer(serializers.ModelSerializer):
     """
     Serializer for Payment model, exposing status control and order relation.
