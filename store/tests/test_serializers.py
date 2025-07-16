@@ -306,6 +306,74 @@ class CustomerSerializerTest(TestCase):
 
 
 
+class UpdateCartItemSerializerTest(TestCase):
+
+    def setUp(self):
+        """Set up test data before each test runs."""
+        self.cart = Cart.objects.create()
+
+        self.category = Category.objects.create(name="Electronics", description="Electronic items")
+
+        self.product = Product.objects.create(
+            name="Laptop",
+            description="A high-end gaming laptop.",
+            price=1500.00,
+            category=self.category,
+            stock=10
+        )
+
+        self.cart_item = CartItem.objects.create(cart=self.cart, product=self.product, quantity=2)
+
+
+    def test_valid_cart_item_update(self):
+        """Test that updating cart item quantity works correctly."""
+        data = {"quantity": 5}  # Valid new quantity
+
+        serializer = UpadateCartItemSerializer(instance=self.cart_item, data=data, partial=True)
+        self.assertTrue(serializer.is_valid())
+
+        updated_cart_item = serializer.save()
+
+        self.assertEqual(updated_cart_item.quantity, 5)  # ✅ Quantity should be updated
+
+
+    def test_negative_quantity_raises_error(self):
+        """Test that providing a negative quantity raises a validation error."""
+        data = {"quantity": -1}  # Invalid quantity
+
+        serializer = UpadateCartItemSerializer(instance=self.cart_item, data=data, partial=True)
+
+        with self.assertRaises(ValidationError) as context:
+            serializer.is_valid(raise_exception=True)
+
+        self.assertIn("quantity", str(context.exception))  # ✅ Ensures proper error message
+
+
+    def test_zero_quantity_is_valid(self):
+        """Test that setting quantity to zero is allowed (for removing items)."""
+        data = {"quantity": 0}  # Removing item
+
+        serializer = UpadateCartItemSerializer(instance=self.cart_item, data=data, partial=True)
+        self.assertTrue(serializer.is_valid())
+
+        updated_cart_item = serializer.save()
+
+        self.assertEqual(updated_cart_item.quantity, 0)  # ✅ Quantity should be updated to zero
+
+
+    def test_large_quantity_is_valid(self):
+        """Test that setting a large quantity is valid."""
+        data = {"quantity": 1000}  # Large but valid quantity
+
+        serializer = UpadateCartItemSerializer(instance=self.cart_item, data=data, partial=True)
+        self.assertTrue(serializer.is_valid())
+
+        updated_cart_item = serializer.save()
+
+        self.assertEqual(updated_cart_item.quantity, 1000)  # ✅ Quantity should be updated
+
+
+
 class AddCartItemSerializerTest(TestCase):
 
     def setUp(self):
