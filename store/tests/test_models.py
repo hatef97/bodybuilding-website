@@ -455,3 +455,34 @@ class CategoryModelTest(TestCase):
         """Test that description can be left blank."""
         category = Category.objects.create(name="Books")
         self.assertEqual(category.description, "")  # Should default to blank
+
+
+
+class DiscountModelTest(TestCase):
+
+    def setUp(self):
+        self.discount = Discount.objects.create(
+            discount=10.5,
+            description="Spring Sale"
+        )
+
+    def test_discount_creation(self):
+        """Test if a Discount instance is created correctly."""
+        self.assertEqual(self.discount.discount, 10.5)
+        self.assertEqual(self.discount.description, "Spring Sale")
+
+    def test_discount_float_field(self):
+        """Test if discount field accepts float values correctly."""
+        self.discount.discount = 15.75
+        self.discount.save()
+        self.assertEqual(self.discount.discount, 15.75)
+
+    def test_description_max_length(self):
+        """Test if description has a maximum length of 255 characters."""
+        max_length = Discount._meta.get_field('description').max_length
+        self.assertEqual(max_length, 255)
+
+    def test_string_representation(self):
+        """Optionally, if you want to add a __str__ method to Discount, you could test it like this."""
+        self.discount.description = "Holiday Discount"
+        self.discount.save()
