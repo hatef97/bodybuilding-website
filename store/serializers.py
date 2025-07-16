@@ -106,6 +106,13 @@ class AddCartItemSerializer(serializers.ModelSerializer):
 
 
 
+class UpadateCartItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CartItem
+        fields = ['quantity']
+
+
+
 class CartSerializer(serializers.ModelSerializer):
     """
     Serializer for Cart model, including nested items and total calculation.
