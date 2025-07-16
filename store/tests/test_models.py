@@ -7,7 +7,7 @@ from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 
-from store.models import Product, Cart, CartItem, Order, Payment
+from store.models import *
 from core.models import CustomUser as User
 
 
@@ -422,3 +422,36 @@ class PaymentModelTest(TestCase):
         self.order.delete()
         with self.assertRaises(Payment.DoesNotExist):
             Payment.objects.get(pk=self.payment.pk)
+
+
+
+class CategoryModelTest(TestCase):
+
+    def setUp(self):
+        self.category = Category.objects.create(
+            name="Electronics",
+            description="All kinds of electronic items."
+        )
+
+
+    def test_category_creation(self):
+        """Test if a Category instance is created correctly."""
+        self.assertEqual(self.category.name, "Electronics")
+        self.assertEqual(self.category.description, "All kinds of electronic items.")
+
+
+    def test_string_representation(self):
+        """Test the __str__ method of Category."""
+        self.assertEqual(str(self.category), "Electronics")
+
+
+    def test_name_uniqueness(self):
+        """Test that the name field must be unique."""
+        with self.assertRaises(Exception):  
+            Category.objects.create(name="Electronics", description="Duplicate name test")
+
+
+    def test_description_blank(self):
+        """Test that description can be left blank."""
+        category = Category.objects.create(name="Books")
+        self.assertEqual(category.description, "")  # Should default to blank
