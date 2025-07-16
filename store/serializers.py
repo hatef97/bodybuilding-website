@@ -165,33 +165,16 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 
 class OrderSerializer(serializers.ModelSerializer):
-    """
-    Serializer for Order model. Reads from cart and exposes nested items.
-    """
-    user = serializers.PrimaryKeyRelatedField(read_only=True, default=serializers.CurrentUserDefault())
-    status = serializers.ChoiceField(choices=Order.ORDER_STATUS_CHOICES, default='pending')
-    items = CartItemSerializer(source='cart.cart_items', many=True, read_only=True)
-    total_price = serializers.DecimalField(
-        max_digits=10, decimal_places=2, read_only=True
-    )
-    created_at = serializers.DateTimeField(read_only=True)
-
+    items = OrderItemSerializer(many=True)
+    
     class Meta:
         model = Order
-        fields = ['id', 'user', 'status', 'items', 'total_price', 'shipping_address', 'created_at']
-        read_only_fields = ('id', 'user', 'items', 'total_price', 'created_at')
-
-    def create(self, validated_data):
-        user = self.context['request'].user
-        cart = validated_data.pop('cart', None)
-        return Order.objects.create(user=user, cart=cart, **validated_data)
-
-    def update(self, instance, validated_data):
-        # Allow status and shipping_address updates only
-        instance.status = validated_data.get('status', instance.status)
-        instance.shipping_address = validated_data.get('shipping_address', instance.shipping_address)
-        instance.save()
-        return instance
+        fields = [
+            'id',
+            'status',
+            'datetime_created',
+            'items'
+        ]      
 
 
 
