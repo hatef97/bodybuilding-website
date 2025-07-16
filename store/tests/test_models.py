@@ -549,3 +549,65 @@ class CustomerModelTest(TestCase):
             phone_number="999-999-9999"
         )
         self.assertIsNone(customer_without_birth_date.birth_date)
+
+
+
+class AddressModelTest(TestCase):
+
+    def setUp(self):
+        # Create user and customer first
+        self.user = User.objects.create_user(
+            username='johndoe',
+            first_name='John',
+            last_name='Doe',
+            email='john@example.com',
+            password='testpassword123'
+        )
+        Customer.objects.filter(user=self.user).delete()
+        self.customer = Customer.objects.create(
+            user=self.user,
+            phone_number="123-456-7890"
+        )
+
+    def test_address_creation(self):
+        """Test that Address can be created for a customer."""
+        address = Address.objects.create(
+            customer=self.customer,
+            province="Ontario",
+            city="Toronto",
+            street="123 Main St"
+        )
+        self.assertEqual(address.customer, self.customer)
+        self.assertEqual(address.province, "Ontario")
+        self.assertEqual(address.city, "Toronto")
+        self.assertEqual(address.street, "123 Main St")
+
+    def test_address_one_to_one_constraint(self):
+        """Test that a customer can have only one address."""
+        Address.objects.create(
+            customer=self.customer,
+            province="Ontario",
+            city="Toronto",
+            street="123 Main St"
+        )
+
+        with self.assertRaises(Exception):  # IntegrityError (wrapped in Django's DatabaseError)
+            Address.objects.create(
+                customer=self.customer,
+                province="Quebec",
+                city="Montreal",
+                street="456 Another St"
+            )
+
+    def test_address_string_representation(self):
+        """Test the string representation of Address if you want to add __str__ later."""
+        address = Address.objects.create(
+            customer=self.customer,
+            province="Ontario",
+            city="Toronto",
+            street="123 Main St"
+        )
+        expected_str = f'{self.customer.full_name}, 123 Main St, Toronto, Ontario'
+        actual_str = f'{address.customer.full_name}, {address.street}, {address.city}, {address.province}'
+        self.assertEqual(actual_str, expected_str)   
+        
