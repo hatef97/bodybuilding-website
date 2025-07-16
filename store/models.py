@@ -133,32 +133,3 @@ class CartItem(models.Model):
 
     def __str__(self):
         return f'{self.quantity} x {self.product.name}'
-
-
-
-# Payment model: Represents a payment made for an order
-class Payment(models.Model):
-    PAYMENT_STATUS_CHOICES = [
-        ('pending', 'Pending'),
-        ('completed', 'Completed'),
-        ('failed', 'Failed'),
-    ]
-    
-    order = models.OneToOneField(Order, on_delete=models.CASCADE)
-    payment_date = models.DateTimeField(auto_now_add=True)
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
-    status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='pending')
-
-    def __str__(self):
-        return f"Payment for Order #{self.order.id}"
-
-    def complete_payment(self):
-        """Method to mark the payment as completed."""
-        self.status = 'completed'
-        self.save()
-
-    def fail_payment(self):
-        """Method to mark the payment as failed."""
-        self.status = 'failed'
-        self.save()
-        

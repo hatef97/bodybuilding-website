@@ -166,47 +166,6 @@ class CartAdmin(admin.ModelAdmin):
 
 
 
-@admin.register(models.Payment)
-class PaymentAdmin(admin.ModelAdmin):
-    list_display = ('order', 'user', 'payment_date', 'amount', 'status')
-    list_editable = ('status',)
-    list_filter = ('status', 'payment_date')
-    search_fields = ('order__id', 'order__user__username', 'order__user__email')
-    date_hierarchy = 'payment_date'
-    readonly_fields = ('payment_date', 'order_details')
-    actions = ('complete_payments', 'fail_payments')
-
-    def user(self, obj):
-        return obj.order.user.username
-    user.short_description = 'User'
-    user.admin_order_field = 'order__user__username'
-
-    def order_details(self, obj):
-        addr = obj.order.shipping_address
-        short = (addr[:50] + '...') if len(addr) > 50 else addr
-        return format_html('Order #{}: {}', obj.order.id, short)
-    order_details.short_description = 'Order Details'
-
-    def complete_payments(self, request, queryset):
-        updated = 0
-        for payment in queryset:
-            if payment.status != 'completed':
-                payment.complete_payment()
-                updated += 1
-        self.message_user(request, f"{updated} payment(s) marked as completed.")
-    complete_payments.short_description = 'Mark selected payments as completed'
-
-    def fail_payments(self, request, queryset):
-        updated = 0
-        for payment in queryset:
-            if payment.status != 'failed':
-                payment.fail_payment()
-                updated += 1
-        self.message_user(request, f"{updated} payment(s) marked as failed.")
-    fail_payments.short_description = 'Mark selected payments as failed'
-
-
-
 @admin.register(models.Category)
 class CategoryAdmin(admin.ModelAdmin):
     list_display = ['name', 'description_excerpt', 'num_of_products']
