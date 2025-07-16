@@ -16,7 +16,7 @@ from django.views.generic import TemplateView
 from .models import *
 from .paginations import DefaultPagination
 from .serializers import *
-from .permissions import IsAdminOrReadOnly, SendPrivateEmailToCustomerPermission
+from .permissions import IsAdminOrReadOnly
 from .signals import order_created
 
 
@@ -93,16 +93,24 @@ class CommentViewSet(ModelViewSet):
 
 
 
-class IsOwnerOrReadOnly(permissions.BasePermission):
-    """
-    Only the owner of an object may edit it; everyone may read.
-    """
-    def has_object_permission(self, request, view, obj):
-        # Read-only are allowed
-        if request.method in permissions.SAFE_METHODS:
-            return True
-        # Otherwise, only owner may write
-        return obj.user == request.user
+class CustomerViewSet(ModelViewSet):
+    serializer_class = CustomerSerializer
+    queryset = Customer.objects.all()
+    permission_classes = [IsAdminUser]
+    
+    
+    @action(detail=False, methods=['GET', 'PUT'], permission_classes=[IsAuthenticated])
+    def me(self, request):
+        user_id = request.user.id
+        customer = Customer.objects.get(user_id=user_id)
+        if request.method == 'GET':
+            serializer = CustomerSerializer(customer)
+            return Response(serializer.data)
+        elif request.method == 'PUT':
+            serializer = CustomerSerializer(customer, data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
 
 
 
