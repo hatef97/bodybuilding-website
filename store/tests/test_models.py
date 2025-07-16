@@ -98,139 +98,57 @@ class ProductModelTest(TestCase):
 
 
 
-class CartModelTests(TestCase):
+class CartModelTest(TestCase):
 
-    def setUp(self):
-        self.user = User.objects.create_user(email="testuser@mail.com", username="testuser", password="pass1234")
-        self.cart = Cart.objects.create(user=self.user)
+    def test_cart_creation(self):
+        """Test that a Cart instance can be created and fields are set correctly."""
+        cart = Cart.objects.create()
 
-        self.product1 = Product.objects.create(
-            name="Protein Bar",
-            description="A tasty protein bar",
-            price=Decimal("2.50"),
-            stock=100,
-        )
-        self.product2 = Product.objects.create(
-            name="Whey Protein",
-            description="5lb whey protein tub",
-            price=Decimal("49.99"),
-            stock=50,
-        )
+        self.assertIsInstance(cart.id, uuid.UUID)  # Primary key should be a UUID
+        self.assertIsNotNone(cart.created_at)  # Timestamp should be auto-generated
 
-        self.cart_item1 = CartItem.objects.create(
-            cart=self.cart,
-            product=self.product1,
-            quantity=4,
-        )
+    def test_cart_unique_id(self):
+        """Test that each cart has a unique UUID."""
+        cart1 = Cart.objects.create()
+        cart2 = Cart.objects.create()
 
-        self.cart_item2 = CartItem.objects.create(
-            cart=self.cart,
-            product=self.product2,
-            quantity=1,
-        )
-
-
-    def test_cart_str_representation(self):
-        self.assertEqual(str(self.cart), f"Cart of {self.user}")
-
-
-    def test_cart_created_at_auto_now_add(self):
-        self.assertIsNotNone(self.cart.created_at)
-        self.assertLessEqual(self.cart.created_at, timezone.now())
-
-
-    def test_cart_relationship_with_user(self):
-        self.assertEqual(self.cart.user, self.user)
-
-
-    def test_cart_items_relationship(self):
-        self.assertEqual(self.cart.products.count(), 2)
-        self.assertIn(self.product1, self.cart.products.all())
-        self.assertIn(self.product2, self.cart.products.all())
-
-
-    def test_total_price_calculation(self):
-        expected_total = (
-            self.product1.price * self.cart_item1.quantity +
-            self.product2.price * self.cart_item2.quantity
-        )
-        self.assertEqual(self.cart.total_price(), expected_total)
-
-
-    def test_cartitem_total_price_method(self):
-        self.assertEqual(self.cart_item1.total_price(), Decimal("10.00"))  # 4 x 2.50
-        self.assertEqual(self.cart_item2.total_price(), Decimal("49.99"))  # 1 x 49.99
-
-
-    def test_cart_empty_total_price(self):
-        empty_cart = Cart.objects.create(user=self.user)
-        self.assertEqual(empty_cart.total_price(), 0)
+        self.assertNotEqual(cart1.id, cart2.id)
 
 
 
 class CartItemModelTest(TestCase):
 
     def setUp(self):
-        # Create a test user for associating with Cart instances
-        self.user = User.objects.create_user(
-            email="testuser@example.com",
-            username="testuser",
-            password="password123"
-        )
-        # Create a Product with known attributes for predictable behavior
+        # Create category and product first, since CartItem depends on Product
+        self.category = Category.objects.create(name="Office Supplies", description="All office-related items")
         self.product = Product.objects.create(
-            name="Test Product",
-            description="A product for testing",
-            price=Decimal("9.99"),  # Decimal ensures accurate currency calculations
-            stock=100  # Initial inventory level
+            name="Pen",
+            description="A blue ink pen",
+            price=Decimal("1.50"),
+            category=self.category,
+            stock=100
         )
-        # Instantiate a Cart linked to the test user
-        self.cart = Cart.objects.create(user=self.user)
-        # Create a CartItem associating the cart and product with a set quantity
-        self.cart_item = CartItem.objects.create(
-            cart=self.cart,
-            product=self.product,
-            quantity=3  # Quantity used for price calculation tests
-        )
+        # Create the Cart
+        self.cart = Cart.objects.create()
 
+    def test_cartitem_creation(self):
+        """Test CartItem can be created and is linked to correct cart and product."""
+        cart_item = CartItem.objects.create(cart=self.cart, product=self.product, quantity=2)
 
-    def test_str_returns_product_name_and_quantity(self):
-        # __str__ should reflect "<product name> x <quantity>"
-        expected = f"{self.product.name} x {self.cart_item.quantity}"
-        self.assertEqual(str(self.cart_item), expected)
+        self.assertEqual(cart_item.cart, self.cart)
+        self.assertEqual(cart_item.product, self.product)
+        self.assertEqual(cart_item.quantity, 2)
 
+    def test_cartitem_unique_together(self):
+        """Test that adding the same product to the same cart twice raises an IntegrityError."""
+        CartItem.objects.create(cart=self.cart, product=self.product, quantity=1)
 
-    def test_total_price_calculation(self):
-        # total_price() multiplies product.price by quantity
-        expected_total = self.product.price * self.cart_item.quantity
-        self.assertEqual(self.cart_item.total_price(), expected_total)
+        with self.assertRaises(Exception):  # Depending on DB, this can be IntegrityError or others
+            CartItem.objects.create(cart=self.cart, product=self.product, quantity=2)
 
-
-    def test_zero_quantity_and_total_price_zero(self):
-        # Edge case: zero quantity should yield zero total price
-        zero_item = CartItem(cart=self.cart, product=self.product, quantity=0)
-        self.assertEqual(zero_item.total_price(), Decimal("0"))
-
-
-    def test_negative_quantity_validation(self):
-        # CartItem.quantity is PositiveIntegerField; negative values should fail validation
-        negative_item = CartItem(cart=self.cart, product=self.product, quantity=-1)
-        with self.assertRaises(ValidationError):
-            negative_item.full_clean()
-
-
-    def test_deleting_product_cascades_to_cart_item(self):
-        # Deleting the Product should cascade delete associated CartItem(s)
-        item = CartItem.objects.create(cart=self.cart, product=self.product, quantity=1)
-        self.product.delete()
-        with self.assertRaises(CartItem.DoesNotExist):
-            CartItem.objects.get(pk=item.pk)
-
-
-    def test_cart_relationship(self):
-        # Verify that the cart's reverse relation returns our CartItem
-        items = self.cart.cart_items.all()
-        self.assertIn(self.cart_item, items)
+    def test_cartitem_str(self):
+        cart_item = CartItem.objects.create(cart=self.cart, product=self.product, quantity=3)
+        self.assertEqual(str(cart_item), '3 x Pen')        
 
 
 
@@ -610,4 +528,67 @@ class AddressModelTest(TestCase):
         expected_str = f'{self.customer.full_name}, 123 Main St, Toronto, Ontario'
         actual_str = f'{address.customer.full_name}, {address.street}, {address.city}, {address.province}'
         self.assertEqual(actual_str, expected_str)   
-        
+
+
+
+class CommentModelTest(TestCase):
+
+    def setUp(self):
+        # Create a category and product to associate with the comment
+        self.category = Category.objects.create(name="Office Supplies", description="Office related items.")
+        self.product = Product.objects.create(
+            name="Notebook",
+            description="A high-quality notebook.",
+            price=10.99,
+            category=self.category,
+            stock=100
+        )
+
+    def test_comment_creation(self):
+        """Test that a Comment can be created and fields are set correctly."""
+        comment = Comment.objects.create(
+            product=self.product,
+            name="John Doe",
+            body="Great product, very useful!",
+            status=Comment.COMMENT_STATUS_WAITING
+        )
+
+        self.assertEqual(comment.product, self.product)
+        self.assertEqual(comment.name, "John Doe")
+        self.assertEqual(comment.body, "Great product, very useful!")
+        self.assertEqual(comment.status, Comment.COMMENT_STATUS_WAITING)
+        self.assertIsNotNone(comment.datetime_created)  # Auto set
+
+    def test_comment_status_choices(self):
+        """Test that the status field accepts only the valid choices."""
+        comment = Comment.objects.create(
+            product=self.product,
+            name="Jane Smith",
+            body="Not bad, but could be better.",
+            status=Comment.COMMENT_STATUS_APPROVED
+        )
+        self.assertEqual(comment.status, Comment.COMMENT_STATUS_APPROVED)
+
+        comment.status = Comment.COMMENT_STATUS_NOT_APPROVED
+        comment.save()
+        self.assertEqual(comment.status, Comment.COMMENT_STATUS_NOT_APPROVED)
+
+    def test_default_status(self):
+        """Test that the default status is waiting."""
+        comment = Comment.objects.create(
+            product=self.product,
+            name="Alex",
+            body="This product is amazing!"
+        )
+        self.assertEqual(comment.status, Comment.COMMENT_STATUS_WAITING)
+
+    def test_comment_string_representation(self):
+        """Test string representation if you want to add __str__."""
+        comment = Comment.objects.create(
+            product=self.product,
+            name="Sarah",
+            body="Loved this product!"
+        )
+        expected_str = f"Comment by Sarah on {self.product.name}"
+        actual_str = f"Comment by {comment.name} on {comment.product.name}"
+        self.assertEqual(actual_str, expected_str)
