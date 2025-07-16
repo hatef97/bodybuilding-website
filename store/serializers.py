@@ -127,34 +127,16 @@ class CartItemSerializer(serializers.ModelSerializer):
 
 
 class CartSerializer(serializers.ModelSerializer):
-    """
-    Serializer for Cart model, including nested items and total calculation.
-    """
-    user = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.all(), default=serializers.CurrentUserDefault()
-    )
-    items = CartItemSerializer(source='cart_items', many=True, read_only=True)
-    total_price = serializers.DecimalField(
-        max_digits=10, decimal_places=2, read_only=True
-    )
-    created_at = serializers.DateTimeField(read_only=True)
-
+    items = CartItemSerializer(many=True, read_only=True)
+    total_price = serializers.SerializerMethodField()
+    
     class Meta:
-        model = Cart
-        fields = ['id', 'user', 'items', 'total_price', 'created_at']
-        read_only_fields = ('id', 'total_price', 'created_at')
-
-    def create(self, validated_data):
-        """
-        Create a new Cart instance tied to the user.
-        """
-        return Cart.objects.create(**validated_data)
-
-    def update(self, instance, validated_data):
-        """
-        Update Cart metadata only; manipulation of items should use dedicated endpoints.
-        """
-        return super().update(instance, validated_data)
+        model = Cart    
+        fields = ['id', 'items', 'total_price']
+        read_only_fields = ['id']
+        
+    def get_total_price(self, cart):
+        return sum([item.quantity * item.product.price for item in cart.items.all()]) 
 
 
 
