@@ -470,333 +470,168 @@ class AddCartItemSerializerTest(TestCase):
 
 
 
-class CartItemSerializerTests(APITestCase):
-    """
-    APITestCase suite for CartItemSerializer, covering nested product serialization,
-    write-only product_id, quantity validation, total_price computation, and create/update.
-    """
+class CartItemSerializerTest(TestCase):
 
     def setUp(self):
-        # Set up request context for nested serializers
-        self.factory = APIRequestFactory()
-        self.request = self.factory.get('/')
+        """Set up test data before each test runs."""
+        self.cart = Cart.objects.create()
 
-        # Create a user and cart
-        self.user = User.objects.create_user(email='testuser@mail.com', username='testuser', password='pass')
-        self.cart = Cart.objects.create(user=self.user)
+        self.category = Category.objects.create(name="Electronics", description="Electronic items")
 
-        # Create a product for testing
         self.product = Product.objects.create(
-            name="Widget",
-            description="A useful widget",
-            price=Decimal('2.50'),
-            stock=20
+            name="Laptop",
+            description="A high-end gaming laptop.",
+            price=50.00,
+            category=self.category,
+            stock=10
         )
 
-        # Base valid data for creation
-        self.valid_data = {
-            'product_id': self.product.id,
-            'quantity': 3
+        self.cart_item = CartItem.objects.create(cart=self.cart, product=self.product, quantity=3)
+
+
+    def test_valid_cart_item_serialization(self):
+        """Test that valid cart item data serializes correctly."""
+        serializer = CartItemSerializer(instance=self.cart_item)
+
+        expected_data = {
+            "id": self.cart_item.id,
+            "product": CartProductSeializer(instance=self.product).data,  # ✅ Nested product serialization
+            "quantity": 3,
+            "item_total": 150.00  # ✅ 3 * 50.00 = 150.00
         }
 
-
-    def test_fields_present(self):
-        """
-        Serialization output should include id, product, quantity, total_price, but not product_id.
-        """
-        # Create item to test read serialization
-        item = CartItem.objects.create(cart=self.cart, product=self.product, quantity=1)
-        serializer = CartItemSerializer(item, context={'request': self.request})
-        data = serializer.data
-        self.assertSetEqual(set(data.keys()), {'id', 'product', 'quantity', 'total_price'})
-        self.assertNotIn('product_id', data)
+        self.assertEqual(serializer.data, expected_data)
 
 
-    def test_nested_product_data(self):
-        """
-        Nested product field should contain the serialized Product data.
-        """
-        item = CartItem.objects.create(cart=self.cart, product=self.product, quantity=1)
-        serializer = CartItemSerializer(item, context={'request': self.request})
-        product_data = serializer.data['product']
-        # Check key fields in nested product
-        for field in ['id', 'name', 'description', 'price', 'stock', 'is_in_stock', 'image_url', 'created_at']:
-            self.assertIn(field, product_data)
-        self.assertEqual(product_data['id'], self.product.id)
-        self.assertEqual(product_data['name'], self.product.name)
+    def test_item_total_calculation(self):
+        """Test that item_total is calculated correctly."""
+        serializer = CartItemSerializer(instance=self.cart_item)
+        self.assertEqual(serializer.data["item_total"], 150.00)  # ✅ 3 * 50.00
 
 
-    def test_total_price_computation(self):
-        """
-        total_price should equal quantity * product.price formatted to 2 decimals.
-        """
-        serializer = CartItemSerializer(data=self.valid_data)
-        self.assertTrue(serializer.is_valid(raise_exception=True))
-        item = serializer.save(cart=self.cart)
-        expected = Decimal('{:.2f}'.format(self.product.price * self.valid_data['quantity']))
-        # Instance total_price method
-        self.assertEqual(item.total_price(), self.product.price * self.valid_data['quantity'])
-        # Serializer output
-        out_ser = CartItemSerializer(item, context={'request': self.request})
-        self.assertEqual(out_ser.data['total_price'], expected)
+    def test_product_nested_serialization(self):
+        """Test that the product field is serialized correctly."""
+        serializer = CartItemSerializer(instance=self.cart_item)
+        expected_product_data = CartProductSeializer(instance=self.product).data
 
-
-    def test_negative_quantity_validation(self):
-        """
-        Serializer should reject negative quantity values.
-        """
-        data = self.valid_data.copy()
-        data['quantity'] = -2
-        serializer = CartItemSerializer(data=data)
-        with self.assertRaises(ValidationError):
-            serializer.is_valid(raise_exception=True)
-
-
-    def test_create_cart_item(self):
-        """
-        Valid data should create a new CartItem under the given cart.
-        """
-        serializer = CartItemSerializer(data=self.valid_data)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        item = serializer.save(cart=self.cart)
-        self.assertIsInstance(item, CartItem)
-        self.assertEqual(item.cart, self.cart)
-        self.assertEqual(item.product, self.product)
-        self.assertEqual(item.quantity, self.valid_data['quantity'])
-
-
-    def test_update_quantity_partial(self):
-        """
-        Partial update should change only the quantity.
-        """
-        item = CartItem.objects.create(cart=self.cart, product=self.product, quantity=1)
-        update_data = {'quantity': 10}
-        serializer = CartItemSerializer(item, data=update_data, partial=True)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        updated = serializer.save()
-        self.assertEqual(updated.quantity, update_data['quantity'])
-        self.assertEqual(updated.product, self.product)
-        self.assertEqual(updated.cart, self.cart)
+        self.assertEqual(serializer.data["product"], expected_product_data)  # ✅ Matches expected nested product data
 
 
 
-class CartSerializerTests(APITestCase):
-    """
-    APITestCase suite for CartSerializer, covering field inclusion, nested items,
-    total_price calculation, create with CurrentUserDefault, and update behavior.
-    """
+class CartSerializerTest(TestCase):
 
     def setUp(self):
-        # Setup request and context
-        self.factory = APIRequestFactory()
-        self.request = self.factory.get('/')
-        # Create two users
-        self.user = User.objects.create_user(username='user1', email='user1@example.com', password='pass')
-        self.other_user = User.objects.create_user(username='user2', email='user2@example.com', password='pass')
-        # Authenticate request
-        self.request.user = self.user
-        # Create a cart for user
-        self.cart = Cart.objects.create(user=self.user)
-        # Create products
-        self.p1 = Product.objects.create(name='P1', description='', price=Decimal('1.00'), stock=5)
-        self.p2 = Product.objects.create(name='P2', description='', price=Decimal('2.00'), stock=5)
-        # Add items
-        CartItem.objects.create(cart=self.cart, product=self.p1, quantity=2)  # total 2.00
-        CartItem.objects.create(cart=self.cart, product=self.p2, quantity=3)  # total 6.00
+        """Set up test data before each test runs."""
+        self.cart = Cart.objects.create()
+
+        self.category = Category.objects.create(name="Electronics", description="Electronic items")
+
+        self.product1 = Product.objects.create(
+            name="Laptop",
+            description="A high-end gaming laptop.",
+            price=Decimal("1000.00"),
+            category=self.category,
+            stock=10
+        )
+        self.product2 = Product.objects.create(
+            name="Phone",
+            description="Iphone 16 pro max",
+            price=Decimal("500.00"),
+            category=self.category,
+            stock=10
+        )
+
+        self.cart_item1 = CartItem.objects.create(cart=self.cart, product=self.product1, quantity=2)  # 2 * 1000 = 2000
+        self.cart_item2 = CartItem.objects.create(cart=self.cart, product=self.product2, quantity=3)  # 3 * 500 = 1500
 
 
-    def test_fields_present(self):
-        """
-        Serialized output includes id, user, items, total_price, created_at.
-        """
-        serializer = CartSerializer(self.cart, context={'request': self.request})
-        data = serializer.data
-        expected_keys = {'id', 'user', 'items', 'total_price', 'created_at'}
-        self.assertSetEqual(set(data.keys()), expected_keys)
+    def test_valid_cart_serialization(self):
+        """Test that a valid cart serializes correctly."""
+        serializer = CartSerializer(instance=self.cart)
 
+        expected_data = {
+            "id": str(self.cart.id),  # ✅ Convert UUID to string to match serializer output
+            "items": CartItemSerializer(instance=self.cart.items.all(), many=True).data,
+            "total_price": Decimal("3500.00") # ✅ 2000 + 1500 = 3500.00
+        }
 
-    def test_nested_items_serialization(self):
-        """
-        items field should list serialized CartItem entries.
-        """
-        serializer = CartSerializer(self.cart, context={'request': self.request})
-        items = serializer.data['items']
-        # Should have two items
-        self.assertEqual(len(items), 2)
-        # Check item structure
-        for item in items:
-            self.assertIn('id', item)
-            self.assertIn('product', item)
-            self.assertIn('quantity', item)
-            self.assertIn('total_price', item)
+        self.assertEqual(serializer.data, expected_data)
 
 
     def test_total_price_calculation(self):
-        """
-        total_price should equal sum of CartItem total_price values.
-        """
-        serializer = CartSerializer(self.cart, context={'request': self.request})
-        # 2*1.00 + 3*2.00 = 2 + 6 = 8.00
-        self.assertEqual(serializer.data['total_price'], Decimal('8.00'))
+        """Test that total_price is calculated correctly."""
+        serializer = CartSerializer(instance=self.cart)
+        self.assertEqual(serializer.data["total_price"], 3500.00)  # ✅ Correct calculation
 
 
-    def test_create_default_user(self):
-        """
-        Creating without user field should assign CurrentUserDefault.
-        """
-        data = {}  # no user provided
-        serializer = CartSerializer(data=data, context={'request': self.request})
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        new_cart = serializer.save()
-        self.assertEqual(new_cart.user, self.user)
+    def test_empty_cart_total_price(self):
+        """Test that an empty cart returns a total price of 0."""
+        empty_cart = Cart.objects.create()
+        serializer = CartSerializer(instance=empty_cart)
+        self.assertEqual(serializer.data["total_price"], 0.00)  # ✅ Should return 0
 
 
-    def test_update_user_field(self):
-        """
-        Updating the user field should change cart ownership.
-        """
-        data = {'user': self.other_user.id}
-        serializer = CartSerializer(self.cart, data=data)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        updated = serializer.save()
-        self.assertEqual(updated.user, self.other_user)
+    def test_cart_items_nested_serialization(self):
+        """Test that the items field is serialized correctly."""
+        serializer = CartSerializer(instance=self.cart)
+        expected_items_data = CartItemSerializer(instance=self.cart.items.all(), many=True).data
 
-
-    def test_cannot_set_total_price_or_created_at(self):
-        """
-        Read-only fields total_price and created_at should be ignored or disallowed on input.
-        """
-        data = {'total_price': '100.00', 'created_at': '2000-01-01T00:00:00Z'}
-        serializer = CartSerializer(self.cart, data=data, partial=True)
-        # is_valid should be True (fields ignored)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        updated = serializer.save()
-        # values unchanged
-        self.assertNotEqual(updated.total_price, Decimal('100.00'))
-        self.assertNotEqual(updated.created_at.isoformat(), '2000-01-01T00:00:00+00:00')
+        self.assertEqual(serializer.data["items"], expected_items_data)  # ✅ Matches expected nested items data
 
 
 
-class OrderSerializerTests(APITestCase):
-    """
-    APITestCase suite for OrderSerializer, covering field inclusion, nested items,
-    total_price, create and update behavior, and read-only enforcement.
-    """
+class OrderItemSerializerTest(TestCase):
 
     def setUp(self):
-        # Setup request with authenticated user
-        self.factory = APIRequestFactory()
-        self.request = self.factory.post('/')
-        self.user = User.objects.create_user(
-            username='orderuser', email='order@example.com', password='pass'
-        )
-        self.request.user = self.user
+        """Set up test data before each test runs."""
+        self.user = User.objects.create_user(username="testuser", email="test@example.com", password="password123")
 
-        # Create Cart and CartItems for the order
-        self.cart = Cart.objects.create(user=self.user)
-        # Products
-        self.p1 = Product.objects.create(
-            name='Prod1', description='D1', price=Decimal('3.00'), stock=10
+        self.customer, created = Customer.objects.get_or_create(
+            user=self.user,
+            defaults={"phone_number": "1234567890", "birth_date": "1990-01-01"}
         )
-        self.p2 = Product.objects.create(
-            name='Prod2', description='D2', price=Decimal('4.50'), stock=5
-        )
-        # Cart items
-        CartItem.objects.create(cart=self.cart, product=self.p1, quantity=2)  # total 6.00
-        CartItem.objects.create(cart=self.cart, product=self.p2, quantity=1)  # total 4.50
 
-        # Valid data for order creation
-        self.valid_data = {
-            'shipping_address': '123 Test St.'
-            # status defaults to 'pending'; user defaulted; items read-only
+        self.order = Order.objects.create(customer=self.customer)
+
+        self.category = Category.objects.create(name="Electronics", description="Electronic items")
+
+        self.product = Product.objects.create(
+            name="Laptop",
+            description="A high-end gaming laptop.",
+            price=1500.00,
+            category=self.category,
+            stock=10
+        )
+
+        self.order_item = OrderItem.objects.create(order=self.order, product=self.product, quantity=2, price=Decimal("1500.00"))
+
+
+    def test_valid_order_item_serialization(self):
+        """Test that a valid order item serializes correctly."""
+        serializer = OrderItemSerializer(instance=self.order_item)
+
+        expected_data = {
+            "id": self.order_item.id,
+            "product": CartProductSeializer(instance=self.product).data,  # ✅ Nested product serialization
+            "quantity": 2,
+            "price": Decimal("1500.00")  # ✅ Correctly formatted price
         }
 
-
-    def test_fields_present(self):
-        """
-        Serialized output includes id, user, status, items, total_price, shipping_address, created_at.
-        """
-        # First create an order
-        order = Order.objects.create(user=self.user, cart=self.cart, shipping_address='123 Test St.')
-        serializer = OrderSerializer(order, context={'request': self.request})
-        data = serializer.data
-        expected_keys = {'id', 'user', 'status', 'items', 'total_price', 'shipping_address', 'created_at'}
-        self.assertSetEqual(set(data.keys()), expected_keys)
+        self.assertEqual(serializer.data, expected_data)
 
 
-    def test_nested_items_and_total_price(self):
-        """
-        items lists CartItems and total_price sums them.
-        """
-        order = Order.objects.create(user=self.user, cart=self.cart, shipping_address='Addr')
-        serializer = OrderSerializer(order, context={'request': self.request})
-        items = serializer.data['items']
-        self.assertEqual(len(items), 2)
-        # Total should be 6.00 + 4.50 = 10.50
-        self.assertEqual(serializer.data['total_price'], Decimal('10.50'))
+    def test_product_nested_serialization(self):
+        """Test that the product field is serialized correctly."""
+        serializer = OrderItemSerializer(instance=self.order_item)
+        expected_product_data = CartProductSeializer(instance=self.product).data
+
+        self.assertEqual(serializer.data["product"], expected_product_data)  # ✅ Matches expected nested product data
 
 
-    def test_create_order_default_fields(self):
-        """
-        Creating via serializer should set user from request and status default.
-        """
-        serializer = OrderSerializer(data=self.valid_data, context={'request': self.request})
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        order = serializer.save(cart=self.cart)
-        self.assertIsInstance(order, Order)
-        self.assertEqual(order.user, self.user)
-        self.assertEqual(order.cart, self.cart)
-        self.assertEqual(order.status, 'pending')
-        self.assertEqual(order.shipping_address, self.valid_data['shipping_address'])
-        # Check computed total price
-        self.assertEqual(order.total_price, Decimal('10.50'))
-
-
-    def test_update_status_and_address(self):
-        """
-        Partial update should allow changing only status and shipping_address.
-        """
-        order = Order.objects.create(user=self.user, cart=self.cart, shipping_address='Old Addr')
-        update_data = {'status': 'completed', 'shipping_address': 'New Addr'}
-        serializer = OrderSerializer(order, data=update_data, partial=True)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        updated = serializer.save()
-        self.assertEqual(updated.status, 'completed')
-        self.assertEqual(updated.shipping_address, 'New Addr')
-
-
-    def test_read_only_fields_ignored(self):
-        """
-        Read-only fields user, items, total_price, created_at cannot be overwritten.
-        """
-        order = Order.objects.create(user=self.user, cart=self.cart, shipping_address='Addr')
-        data = {
-            'user': 999,
-            'items': [],
-            'total_price': '999.99',
-            'created_at': '2000-01-01T00:00:00Z'
-        }
-        serializer = OrderSerializer(order, data=data, partial=True)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        saved = serializer.save()
-        # original user remains
-        self.assertEqual(saved.user, self.user)
-        # total_price unchanged
-        self.assertEqual(saved.total_price, order.total_price)
-        # shipping_address unchanged
-        self.assertEqual(saved.shipping_address, order.shipping_address)
-        # items unchanged length
-        self.assertEqual(list(saved.cart.cart_items.all()).__len__(), 2)
-
-
-    def test_invalid_status_choice(self):
-        """
-        Serializer should reject invalid status values.
-        """
-        order = Order.objects.create(user=self.user, cart=self.cart, shipping_address='Addr')
-        serializer = OrderSerializer(order, data={'status': 'invalid'}, partial=True)
-        with self.assertRaises(ValidationError):
-            serializer.is_valid(raise_exception=True)
+    def test_price_field_serialization(self):
+        """Test that the price field correctly represents the item's price."""
+        serializer = OrderItemSerializer(instance=self.order_item)
+        self.assertEqual(serializer.data["price"], Decimal("1500.00"))  # ✅ Ensures correct price formatting
 
 
 
