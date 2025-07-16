@@ -150,6 +150,20 @@ class OrderCustomerSerializer(serializers.ModelSerializer):
 
 
 
+class OrderItemSerializer(serializers.ModelSerializer):
+    product = CartProductSeializer()
+    
+    class Meta:
+        model = OrderItem
+        fields = [
+            'id',
+            'product',
+            'quantity',
+            'price'
+        ]
+
+
+
 class OrderSerializer(serializers.ModelSerializer):
     """
     Serializer for Order model. Reads from cart and exposes nested items.
