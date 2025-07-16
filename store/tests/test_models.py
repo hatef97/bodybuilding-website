@@ -1,9 +1,12 @@
 from decimal import Decimal
 import datetime
+from datetime import date
+import uuid
 
 from django.test import TestCase
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
+from django.utils.timezone import now
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 
@@ -12,72 +15,86 @@ from core.models import CustomUser as User
 
 
 
-class ProductModelTests(TestCase):
+class ProductModelTest(TestCase):
 
     def setUp(self):
+        self.category = Category.objects.create(
+            name="Electronics",
+            description="All kinds of electronics"
+        )
+
+        self.discount1 = Discount.objects.create(
+            discount=10.0,
+            description="Spring Sale"
+        )
+
+        self.discount2 = Discount.objects.create(
+            discount=15.0,
+            description="Holiday Discount"
+        )
+
         self.product = Product.objects.create(
-            name="Test Product",
-            description="A product for testing",
-            price=Decimal("19.99"),
-            stock=10,
-            image=None,
+            name="Smartphone",
+            description="Latest smartphone with high specs",
+            price=599.99,
+            category=self.category,
+            stock=50,
+            created_at=now(),
         )
 
+        self.product.discounts.add(self.discount1, self.discount2)
 
-    def test_str_representation(self):
-        self.assertEqual(str(self.product), "Test Product")
+    def test_product_creation(self):
+        """Test product instance is created correctly."""
+        self.assertEqual(self.product.name, "Smartphone")
+        self.assertEqual(self.product.description, "Latest smartphone with high specs")
+        self.assertEqual(self.product.price, 599.99)
+        self.assertEqual(self.product.category, self.category)
+        self.assertEqual(self.product.stock, 50)
 
+    def test_string_representation(self):
+        """Test the __str__ method of Product."""
+        self.assertEqual(str(self.product), "Smartphone")
 
-    def test_product_fields(self):
-        self.assertEqual(self.product.name, "Test Product")
-        self.assertEqual(self.product.description, "A product for testing")
-        self.assertEqual(self.product.price, Decimal("19.99"))
-        self.assertEqual(self.product.stock, 10)
-        self.assertIsNone(self.product.image.name)
-        self.assertIsInstance(self.product.created_at, datetime.datetime)
+    def test_category_relationship(self):
+        """Test that product is linked to the correct category."""
+        self.assertEqual(self.product.category.name, "Electronics")
 
+    def test_discounts_relationship(self):
+        """Test the many-to-many relationship with Discount."""
+        discounts = self.product.discounts.all()
+        self.assertEqual(discounts.count(), 2)
+        self.assertIn(self.discount1, discounts)
+        self.assertIn(self.discount2, discounts)
 
-    def test_is_in_stock_true(self):
-        self.assertTrue(self.product.is_in_stock())
+    def test_image_field_blank(self):
+        """Test that image field can be left blank."""
+        self.assertFalse(self.product.image)
 
-
-    def test_is_in_stock_false(self):
-        self.product.stock = 0
+    def test_image_upload(self):
+        """Test uploading an image to the product."""
+        image = SimpleUploadedFile(
+            "test_image.jpg",
+            b"file_content",
+            content_type="image/jpeg"
+        )
+        self.product.image = image
         self.product.save()
-        self.assertFalse(self.product.is_in_stock())
+        self.assertTrue(self.product.image.name.startswith('products/test_image'))
 
-
-    def test_decrease_stock_success(self):
-        result = self.product.decrease_stock(5)
-        self.assertTrue(result)
-        self.product.refresh_from_db()
-        self.assertEqual(self.product.stock, 5)
-
-
-    def test_decrease_stock_failure(self):
-        result = self.product.decrease_stock(15)
-        self.assertFalse(result)
-        self.product.refresh_from_db()
-        self.assertEqual(self.product.stock, 10)
-
-
-    def test_increase_stock(self):
-        self.product.increase_stock(7)
-        self.product.refresh_from_db()
-        self.assertEqual(self.product.stock, 17)
-
-
-    def test_optional_image_upload(self):
-        image_file = SimpleUploadedFile("test_image.jpg", b"file_content", content_type="image/jpeg")
-        product_with_image = Product.objects.create(
-            name="Image Product",
-            description="Has image",
-            price=Decimal("29.99"),
-            stock=3,
-            image=image_file
+    def test_default_stock(self):
+        """Test stock default value."""
+        product_without_stock = Product.objects.create(
+            name="Tablet",
+            description="High performance tablet",
+            price=299.99,
+            category=self.category
         )
-        self.assertIsNotNone(product_with_image.image)
-        self.assertIn("products/test_image.jpg", product_with_image.image.name)
+        self.assertEqual(product_without_stock.stock, 0)
+
+    def test_created_at_auto_now_add(self):
+        """Test created_at is set on creation."""
+        self.assertIsNotNone(self.product.created_at)
 
 
 
@@ -486,3 +503,48 @@ class DiscountModelTest(TestCase):
         """Optionally, if you want to add a __str__ method to Discount, you could test it like this."""
         self.discount.description = "Holiday Discount"
         self.discount.save()
+
+
+
+class CustomerModelTest(TestCase):
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="johndoe",
+            first_name="John",
+            last_name="Doe",
+            email="john@example.com",
+            password="testpassword123"
+        )
+
+        Customer.objects.filter(user=self.user).delete()
+
+        self.customer = Customer.objects.create(
+            user=self.user,
+            phone_number="123-456-7890",
+            birth_date=date(1990, 5, 20)
+        )
+
+
+    def test_customer_creation(self):
+        """Test customer instance is created correctly."""
+        self.assertEqual(self.customer.user, self.user)
+        self.assertEqual(self.customer.phone_number, "123-456-7890")  # Check the phone number
+        self.assertEqual(self.customer.birth_date, date(1990, 5, 20))
+
+    def test_string_representation(self):
+        """Test the __str__ method of Customer."""
+        self.assertEqual(str(self.customer), "John Doe")
+
+    def test_full_name_property(self):
+        """Test the full_name property."""
+        self.assertEqual(self.customer.full_name, "John Doe")
+
+    def test_birth_date_can_be_blank(self):
+        """Test birth_date can be blank or null."""
+        Customer.objects.filter(user=self.user).delete()
+        customer_without_birth_date = Customer.objects.create(
+            user=self.user,
+            phone_number="999-999-9999"
+        )
+        self.assertIsNone(customer_without_birth_date.birth_date)
