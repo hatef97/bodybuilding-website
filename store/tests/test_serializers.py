@@ -635,6 +635,186 @@ class OrderItemSerializerTest(TestCase):
 
 
 
+class OrderSerializerTest(TestCase):
+
+    def setUp(self):
+        """Set up test data before each test runs."""
+        self.user = User.objects.create_user(username="testuser", email="test@example.com", password="password123")
+
+        self.customer, created = Customer.objects.get_or_create(
+            user=self.user,
+            defaults={"phone_number": "1234567890", "birth_date": "1990-01-01"}
+        )
+
+        self.order = Order.objects.create(customer=self.customer, status="p")  # Paid status
+
+        self.category = Category.objects.create(name="Electronics", description="Electronic items")
+
+        self.product1 = Product.objects.create(
+            name="Laptop",
+            description="A high-end gaming laptop.",
+            price=Decimal("1500.00"),
+            category=self.category,
+            stock=10
+        )
+        self.product2 = Product.objects.create(
+            name="Phone",
+            description="Iphone 16 pro max",
+            price=Decimal("400.00"),
+            category=self.category,
+            stock=10
+        )
+
+        self.order_item1 = OrderItem.objects.create(order=self.order, product=self.product1, quantity=1, price=Decimal("1500.00"))
+        self.order_item2 = OrderItem.objects.create(order=self.order, product=self.product2, quantity=2, price=Decimal("800.00"))
+
+
+    def test_valid_order_serialization(self):
+        """Test that a valid order serializes correctly."""
+        serializer = OrderSerializer(instance=self.order)
+
+        expected_data = {
+            "id": self.order.id,
+            "status": "p",  # Paid status
+            "datetime_created": self.order.datetime_created.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),  # ✅ Ensures correct datetime format
+            "items": OrderItemSerializer(instance=self.order.items.all(), many=True).data  # ✅ Nested items
+        }
+
+        self.assertEqual(serializer.data, expected_data)
+
+
+    def test_order_items_nested_serialization(self):
+        """Test that the items field is serialized correctly."""
+        serializer = OrderSerializer(instance=self.order)
+        expected_items_data = OrderItemSerializer(instance=self.order.items.all(), many=True).data
+
+        self.assertEqual(serializer.data["items"], expected_items_data)  # ✅ Matches expected nested items data
+
+
+    def test_order_status_serialization(self):
+        """Test that the status field is correctly serialized."""
+        serializer = OrderSerializer(instance=self.order)
+        self.assertEqual(serializer.data["status"], "p")  # ✅ Ensures correct status representation
+
+
+    def test_order_datetime_serialization(self):
+        """Test that the datetime_created field is serialized correctly."""
+        serializer = OrderSerializer(instance=self.order)
+        expected_datetime = self.order.datetime_created.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        self.assertEqual(serializer.data["datetime_created"], expected_datetime)  # ✅ Ensures correct datetime format
+
+
+
+class OrderCreateSerializerTest(TestCase):
+
+    def setUp(self):
+        """Set up test data before each test runs."""
+        self.user = User.objects.create_user(username="testuser", email="test@example.com", password="password123")
+
+        self.customer, created = Customer.objects.get_or_create(
+            user=self.user,
+            defaults={"phone_number": "1234567890", "birth_date": "1990-01-01"}
+        )
+
+        self.cart = Cart.objects.create(id=uuid4())
+
+        self.category = Category.objects.create(name="Electronics", description="Electronic items")
+
+        self.product = Product.objects.create(
+            name="Laptop",
+            description="A high-end gaming laptop.",
+            price=1500.00,
+            category=self.category,
+            stock=10
+        )
+
+        self.cart_item = CartItem.objects.create(cart=self.cart, product=self.product, quantity=2)  # 2 * 1500
+
+
+    def test_valid_cart_creates_order(self):
+        """Test that an order is created when a valid cart ID is provided."""
+        serializer = OrderCreateSerializer(data={"cart_id": self.cart.id}, context={"user_id": self.user.id})
+        self.assertTrue(serializer.is_valid())
+
+        order = serializer.save()
+        self.assertEqual(Order.objects.count(), 1)
+        self.assertEqual(OrderItem.objects.count(), 1)
+        self.assertEqual(order.customer, self.customer)
+
+
+    def test_cart_does_not_exist(self):
+        """Test that a ValidationError is raised when the cart ID does not exist."""
+        fake_cart_id = uuid4()
+        serializer = OrderCreateSerializer(data={"cart_id": fake_cart_id}, context={"user_id": self.user.id})
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("cart_id", serializer.errors)
+        self.assertEqual(str(serializer.errors["cart_id"][0]), "There is no cart with this cart id!")
+
+
+    def test_empty_cart_raises_error(self):
+        """Test that a ValidationError is raised when trying to create an order from an empty cart."""
+        empty_cart = Cart.objects.create(id=uuid4())
+        serializer = OrderCreateSerializer(data={"cart_id": empty_cart.id}, context={"user_id": self.user.id})
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("cart_id", serializer.errors)
+        self.assertEqual(str(serializer.errors["cart_id"][0]), "Your cart is empty. Please add some products to it first!")
+
+
+    def test_order_creation_removes_cart(self):
+        """Test that after an order is created, the cart is deleted."""
+        serializer = OrderCreateSerializer(data={"cart_id": self.cart.id}, context={"user_id": self.user.id})
+        self.assertTrue(serializer.is_valid())
+
+        serializer.save()
+        self.assertFalse(Cart.objects.filter(id=self.cart.id).exists())  # ✅ Cart should be deleted after order creation
+
+
+
+class OrderUpdateSerializerTest(TestCase):
+
+    def setUp(self):
+        """Set up test data before each test runs."""
+        self.user = User.objects.create_user(username="testuser", email="test@example.com", password="password123")
+
+        self.customer, created = Customer.objects.get_or_create(
+            user=self.user,
+            defaults={"phone_number": "1234567890", "birth_date": "1990-01-01"}
+        )
+        
+        self.order = Order.objects.create(customer=self.customer, status="u")  # Default: Unpaid
+
+
+    def test_valid_status_update(self):
+        """Test that a valid status update works correctly."""
+        serializer = OrderUpdateSerializer(instance=self.order, data={"status": "p"}, partial=True)
+        self.assertTrue(serializer.is_valid())
+
+        updated_order = serializer.save()
+        self.assertEqual(updated_order.status, "p")  # ✅ Status should be updated to Paid
+
+
+    def test_invalid_status_update(self):
+        """Test that an invalid status raises a validation error."""
+        serializer = OrderUpdateSerializer(instance=self.order, data={"status": "invalid_status"}, partial=True)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("status", serializer.errors)
+
+
+    def test_partial_update_does_not_modify_other_fields(self):
+        """Test that updating status does not modify other fields."""
+        old_datetime_created = self.order.datetime_created
+
+        serializer = OrderUpdateSerializer(instance=self.order, data={"status": "c"}, partial=True)
+        self.assertTrue(serializer.is_valid())
+
+        updated_order = serializer.save()
+        self.assertEqual(updated_order.status, "c")  # ✅ Status should be updated to Canceled
+        self.assertEqual(updated_order.datetime_created, old_datetime_created)  # ✅ Other fields remain unchanged
+
+
+
 class PaymentSerializerTests(APITestCase):
     """
     APITestCase suite for PaymentSerializer, covering field inclusion,
