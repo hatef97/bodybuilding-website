@@ -49,6 +49,21 @@ class ProductSerializer(serializers.ModelSerializer):
 
 
 
+class CommentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Comment
+        fields = [
+            'id',
+            'name',
+            'body',
+        ]
+        
+    def create(self, validated_data):
+        product_id = self.context['product_pk']    
+        return Comment.objects.create(product_id=product_id, **validated_data)
+
+
+
 class CartItemSerializer(serializers.ModelSerializer):
     """
     Serializer for CartItem, nested under Cart. Supports read/write of product and quantity.
