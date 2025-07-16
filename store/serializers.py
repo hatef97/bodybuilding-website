@@ -64,6 +64,14 @@ class CommentSerializer(serializers.ModelSerializer):
 
 
 
+class CustomerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Customer
+        fields = ['id', 'user', 'phone_number', 'birth_date']      
+        read_only_fields = ['user']
+
+
+
 class CartItemSerializer(serializers.ModelSerializer):
     """
     Serializer for CartItem, nested under Cart. Supports read/write of product and quantity.
