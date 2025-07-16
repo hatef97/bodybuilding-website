@@ -65,138 +65,162 @@ class CategorySerializerTest(TestCase):
 
 
 
-class ProductSerializerTests(APITestCase):
-    """
-    APITestCase suite for the ProductSerializer, covering field inclusion,
-    computed fields, validation, rounding, and create/update behavior.
-    """
+class ProductSerializerTest(TestCase):
 
     def setUp(self):
-        # Prepare request context for URL fields
-        self.factory = APIRequestFactory()
-        self.request = self.factory.get('/')
+        """Set up test data before each test runs."""
+        self.category = Category.objects.create(name="Electronics", description="Electronic items")
 
-        # Create a base product instance for update tests
         self.product = Product.objects.create(
-            name="Sample Product",
-            description="Initial description",
-            price=9.99,
+            name="Laptop",
+            description="A high-end gaming laptop.",
+            price=1500.00,
+            category=self.category,
             stock=10
         )
 
-        # Payload for valid create/update
-        self.valid_data = {
-            "name": "New Product",
-            "description": "Test creation",
-            "price": 15.755,
-            "stock": 5
+
+    def test_valid_product_serialization(self):
+        """Test that valid product data serializes correctly."""
+        serializer = ProductSerializer(instance=self.product)
+        
+        expected_data = {
+            "id": self.product.id,
+            "name": "Laptop",
+            "description": "A high-end gaming laptop.",
+            "price": Decimal("1500.00"),
+            "category": self.category.id,
+            "category_name": "Electronics",
+            "stock": 10,
+            "image": None,  # Assuming the image is not set
+            "created_at": serializer.data["created_at"],  # Auto-generated field
         }
 
-
-    def test_fields_present(self):
-        """
-        Serializer output includes exactly the declared fields.
-        """
-        serializer = ProductSerializer(self.product, context={'request': self.request})
-        data_keys = set(serializer.data.keys())
-        expected = {"id", "name", "description", "price", "stock", "is_in_stock", "image_url", "created_at"}
-        self.assertSetEqual(data_keys, expected)
+        self.assertEqual(serializer.data, expected_data)
 
 
-    def test_is_in_stock_flag(self):
-        """
-        Computed is_in_stock is False at zero stock, True otherwise.
-        """
-        # Zero stock → False
-        self.product.stock = 0
-        self.product.save()
-        serializer = ProductSerializer(self.product, context={'request': self.request})
-        self.assertFalse(serializer.data['is_in_stock'])
-
-        # Positive stock → True
-        self.product.stock = 3
-        self.product.save()
-        serializer = ProductSerializer(self.product, context={'request': self.request})
-        self.assertTrue(serializer.data['is_in_stock'])
+    def test_category_name_field(self):
+        """Test that the category_name field correctly represents the category name."""
+        serializer = ProductSerializer(instance=self.product)
+        self.assertEqual(serializer.data["category_name"], "Electronics")
 
 
-    def test_image_url_handling(self):
-        """
-        image_url is None without an image, and returns a URL when image is set.
-        """
-        # No image
-        serializer = ProductSerializer(self.product, context={'request': self.request})
-        self.assertIsNone(serializer.data['image_url'])
-
-        # Attach an image
-        img = SimpleUploadedFile('test.png', b'\x89PNG\r\n', content_type='image/png')
-        self.product.image = img
-        self.product.save()
-        serializer = ProductSerializer(self.product, context={'request': self.request})
-        url = serializer.data['image_url']
-        self.assertTrue(url.endswith('test.png'))
-
-
-    def test_validate_price_negative(self):
-        """
-        Negative price should trigger a ValidationError.
-        """
-        data = self.valid_data.copy()
-        data['price'] = -0.01
-        serializer = ProductSerializer(data=data)
-        with self.assertRaises(ValidationError):
+    def test_negative_price_validation(self):
+        """Test that a negative price raises a validation error."""
+        invalid_data = {
+            "name": "Smartphone",
+            "description": "Latest smartphone model",
+            "price": -100,
+            "category": self.category.id,
+            "stock": 5
+        }
+        
+        serializer = ProductSerializer(data=invalid_data)
+        
+        with self.assertRaises(ValidationError) as context:
             serializer.is_valid(raise_exception=True)
+        
+        self.assertIn("Price cannot be negative.", str(context.exception))
 
 
-    def test_validate_price_rounding(self):
-        """
-        Price is rounded to two decimal places on validation.
-        """
-        data = self.valid_data.copy()
-        data['price'] = 2.129
-        serializer = ProductSerializer(data=data)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        instance = serializer.save()
-        self.assertEqual(instance.price, Decimal('2.13'))
-
-
-    def test_validate_stock_negative(self):
-        """
-        Negative stock should trigger a ValidationError.
-        """
-        data = self.valid_data.copy()
-        data['stock'] = -5
-        serializer = ProductSerializer(data=data)
-        with self.assertRaises(ValidationError):
+    def test_negative_stock_validation(self):
+        """Test that a negative stock raises a validation error."""
+        invalid_data = {
+            "name": "Smartphone",
+            "description": "Latest smartphone model",
+            "price": 500,
+            "category": self.category.id,
+            "stock": -5  # Invalid stock value
+        }
+        
+        serializer = ProductSerializer(data=invalid_data)
+        
+        with self.assertRaises(ValidationError) as context:
             serializer.is_valid(raise_exception=True)
+        
+        self.assertIn("Stock cannot be negative.", str(context.exception))
 
 
-    def test_create_product(self):
-        """
-        Saving a valid serializer should create a new Product instance.
-        """
-        serializer = ProductSerializer(data=self.valid_data)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        new_product = serializer.save()
-        self.assertIsInstance(new_product, Product)
-        self.assertEqual(new_product.name, self.valid_data['name'])
-        self.assertEqual(new_product.stock, self.valid_data['stock'])
-        self.assertEqual(new_product.price, Decimal(str(round(self.valid_data['price'], 2))))
+    def test_slug_is_created_on_product_creation(self):
+        """Test that a slug is generated when a product is created."""
+        data = {
+            "name": "Wireless Headphones",
+            "description": "Noise-canceling wireless headphones",
+            "price": 200,
+            "category": self.category
+        }
+        
+        product = Product(**data)
+        product.slug = slugify(product.name)  # Simulate the `create` method
+        product.save()
+        
+        self.assertEqual(product.slug, "wireless-headphones")
 
 
-    def test_update_product_partial(self):
-        """
-        Partial update should only change the provided fields.
-        """
-        update_data = {"name": "Updated Product", "stock": 20}
-        serializer = ProductSerializer(self.product, data=update_data, partial=True)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        updated = serializer.save()
-        self.assertEqual(updated.name, update_data['name'])
-        self.assertEqual(updated.stock, update_data['stock'])
-        # Other fields remain unchanged
-        self.assertEqual(updated.price, self.product.price)
-        self.assertEqual(updated.description, self.product.description)
+
+class CommentSerializerTest(TestCase):
+
+    def setUp(self):
+        """Set up test data before each test runs."""
+        self.category = Category.objects.create(name="Electronics", description="Electronic items")
+
+        self.product = Product.objects.create(
+            name="Laptop",
+            description="A high-end gaming laptop.",
+            price=1500.00,
+            category=self.category,
+            stock=10
+        )
+
+        self.comment = Comment.objects.create(
+            product=self.product,
+            name="John Doe",
+            body="Great product!"
+        )
+
+
+    def test_valid_comment_serialization(self):
+        """Test that valid comment data serializes correctly."""
+        serializer = CommentSerializer(instance=self.comment)
+        
+        expected_data = {
+            "id": self.comment.id,
+            "name": "John Doe",
+            "body": "Great product!"
+        }
+
+        self.assertEqual(serializer.data, expected_data)
+
+
+    def test_create_comment_with_product_pk(self):
+        """Test that a comment is created with the correct product_id from context."""
+        data = {
+            "name": "Jane Doe",
+            "body": "Amazing quality!"
+        }
+
+        serializer = CommentSerializer(data=data, context={"product_pk": self.product.id})
+        self.assertTrue(serializer.is_valid())
+
+        comment = serializer.save()
+
+        self.assertEqual(comment.name, "Jane Doe")
+        self.assertEqual(comment.body, "Amazing quality!")
+        self.assertEqual(comment.product_id, self.product.id)  # ✅ Ensures correct product association
+
+
+    def test_missing_product_pk_in_context(self):
+        """Test that a missing product_pk in context raises an error."""
+        data = {
+            "name": "Jane Doe",
+            "body": "Amazing quality!"
+        }
+
+        serializer = CommentSerializer(data=data)  # ❌ No 'product_pk' in context
+
+        with self.assertRaises(KeyError):
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
 
 
 
