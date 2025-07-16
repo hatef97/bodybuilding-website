@@ -72,22 +72,14 @@ class CustomerSerializer(serializers.ModelSerializer):
 
 
 
-class CartItemSerializer(serializers.ModelSerializer):
-    """
-    Serializer for CartItem, nested under Cart. Supports read/write of product and quantity.
-    """
-    product = ProductSerializer(read_only=True)
-    product_id = serializers.PrimaryKeyRelatedField(
-        queryset=Product.objects.all(), source='product', write_only=True
-    )
-    total_price = serializers.DecimalField(
-        max_digits=10, decimal_places=2, read_only=True
-    )
-
+class CartProductSeializer(serializers.ModelSerializer):
     class Meta:
-        model = CartItem
-        fields = ['id', 'product', 'product_id', 'quantity', 'total_price']
-        read_only_fields = ('id', 'product', 'total_price')
+        model = Product
+        fields = [
+            'id',
+            'name',
+            'price',
+            ]
 
 
 
