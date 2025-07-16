@@ -142,4 +142,56 @@ class CartViewSet(CreateModelMixin,
     serializer_class = CartSerializer 
     queryset = Cart.objects.prefetch_related('items__product').all()
     permission_classes = [IsAuthenticated]
+
+
+
+class OrderViewSet(ModelViewSet):
+    http_method_names = ['get', 'post', 'patch', 'delete', 'options', 'head']
+    # permission_classes = [IsAuthenticated]
     
+    def get_permissions(self):
+        if self.request.method in ['PATCH', 'DELETE']:
+            return [IsAdminUser()]
+        return [IsAuthenticated()]
+    def get_queryset(self):
+        queryset = Order.objects.prefetch_related(
+            Prefetch(
+                'items',
+                queryset=OrderItem.objects.select_related('product')
+                )
+            ).select_related('customer__user').all() 
+        user = self.request.user
+        
+        if user.is_staff:
+             return queryset
+        
+        return queryset.filter(customer__user_id=user.id)
+         
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return OrderCreateSerializer
+        
+        if self.request.method == 'PATCH':
+            return OrderUpdateSerializer
+        
+        if self.request.user.is_staff:
+            return OrderForAdminSerializer
+        return OrderSerializer     
+    
+    
+    def get_serializer_context(self):
+        return {'user_id': self.request.user.id}
+    
+    def create(self, request, *args, **kwargs):
+        create_order_serializer = OrderCreateSerializer(
+            data=request.data,
+            context={'user_id': self.request.user.id}
+            )
+        create_order_serializer.is_valid(raise_exception=True)
+        created_order = create_order_serializer.save()
+        
+        order_created.send_robust(self.__class__, order=created_order)
+        
+        serializer = OrderSerializer(created_order)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
