@@ -132,4 +132,14 @@ class CartItemViewSet(ModelViewSet):
     
     def get_serializer_context(self):
         return {'cart_pk': self.kwargs['cart_pk']}
-        
+
+
+
+class CartViewSet(CreateModelMixin,
+                   RetrieveModelMixin,
+                   DestroyModelMixin,
+                   GenericViewSet):
+    serializer_class = CartSerializer 
+    queryset = Cart.objects.prefetch_related('items__product').all()
+    permission_classes = [IsAuthenticated]
+    
