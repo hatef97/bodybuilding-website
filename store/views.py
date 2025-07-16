@@ -64,43 +64,32 @@ class CategoryViewSet(ModelViewSet):
 
 
 
-class CartItemViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint for CartItem, nested under Cart.
+class CommentViewSet(ModelViewSet):
+    serializer_class = CommentSerializer    
+    permission_classes = [IsAuthenticated]
     
-    - list/retrieve: view items in your cart
-    - create: add a product + quantity to your cart
-    - update/partial_update: change quantity
-    - destroy: remove item
-    """
-    serializer_class = CartItemSerializer
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOfCart]
-    parser_classes = [JSONParser]
-
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['product__id', 'quantity']
-    ordering_fields = ['quantity', 'total_price']
-    ordering = ['-id']
-
-    def get_cart(self):
-        # Lookup the cart by URL, ensure it belongs to current user
-        return get_object_or_404(Cart, pk=self.kwargs['cart_pk'], user=self.request.user)
-
     def get_queryset(self):
-        # Only items in the specified cart, with product prefetched
-        return (
-            CartItem.objects
-            .filter(cart=self.get_cart())
-            .select_related('product')
-        )
+        product_pk = self.kwargs['product_pk']
+        return Comment.objects.filter(product_id=product_pk)
 
-    def perform_create(self, serializer):
-        # Associate the new item with the cart from the URL
-        serializer.save(cart=self.get_cart())
+    def get_serializer_context(self):
+        return {'product_pk': self.kwargs['product_pk']}
+    
+    def destroy(self, request, *args, **kwargs):
+        product_pk = kwargs.get('product_pk')  # Get product ID from URL
+        pk = kwargs.get('pk')  # Get comment ID
 
-    def perform_update(self, serializer):
-        # Only quantity can change; cart/product remain fixed by serializer
-        serializer.save()
+        # Ensure the comment belongs to the correct product
+        comment = get_object_or_404(Comment, pk=pk, product_id=product_pk)
+        
+        if not request.user.is_staff:
+            return Response(
+                {"detail": "You do not have permission to delete this comment."},
+                            status=status.HTTP_403_FORBIDDEN
+                            )
+        
+        comment.delete()
+        return Response({"message": "Comment deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
 
 
 
