@@ -224,6 +224,88 @@ class CommentSerializerTest(TestCase):
 
 
 
+class CustomerSerializerTest(TestCase):
+
+    def setUp(self):
+        """Set up test data before each test runs."""
+        self.user = User.objects.create_user(username="testuser", email="testuser@example.com", password="password123")
+
+        self.customer, created = Customer.objects.get_or_create(
+            user=self.user,
+            defaults={"phone_number": "1234567890", "birth_date": "1990-01-01"}
+        )
+        # Explicitly update the customer to ensure correct values
+        if not created:
+            self.customer.phone_number = "1234567890"
+            self.customer.birth_date = "1990-01-01"
+            self.customer.save()
+
+
+    def test_valid_customer_serialization(self):
+        """Test that valid customer data serializes correctly."""
+        serializer = CustomerSerializer(instance=self.customer)
+        
+        expected_data = {
+            "id": self.customer.id,
+            "user": self.user.id,  # Ensuring the user field is included as an ID
+            "phone_number": "1234567890",
+            "birth_date": "1990-01-01"
+        }
+
+        self.assertEqual(serializer.data, expected_data)
+
+
+    def test_read_only_user_field(self):
+        """Test that the user field is read-only and cannot be changed."""
+        data = {
+            "user": 999,  # Invalid user ID (should be read-only)
+            "phone_number": "0987654321",
+            "birth_date": "2000-05-15"
+        }
+
+        serializer = CustomerSerializer(instance=self.customer, data=data, partial=True)
+
+        self.assertTrue(serializer.is_valid())
+
+        updated_customer = serializer.save()
+
+        self.assertEqual(updated_customer.user, self.customer.user)  # ✅ User should remain unchanged
+
+
+    def test_create_customer_successfully(self):
+        """Test that a new customer can be created successfully."""
+        new_user = User.objects.create_user(username="newuser", email="newuser@example.com", password="password123")
+
+        Customer.objects.filter(user=new_user).delete()
+
+        data = {
+            "phone_number": "5551234567",
+            "birth_date": "1995-08-20"
+        }
+
+        serializer = CustomerSerializer(data=data, context={"user": new_user})
+        self.assertTrue(serializer.is_valid())
+
+        # Create customer only if it doesn't exist
+        customer, created = Customer.objects.get_or_create(user=new_user, defaults=serializer.validated_data)   
+
+        self.assertTrue(created)
+        self.assertEqual(customer.phone_number, "5551234567")
+        self.assertEqual(str(customer.birth_date), "1995-08-20")
+        self.assertEqual(customer.user, new_user)
+
+
+    def test_missing_required_fields(self):
+        """Test that missing required fields raise a validation error."""
+        data = {}  # Empty data should fail
+
+        serializer = CustomerSerializer(data=data)
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("phone_number", serializer.errors)
+
+
+
 class CartItemSerializerTests(APITestCase):
     """
     APITestCase suite for CartItemSerializer, covering nested product serialization,
