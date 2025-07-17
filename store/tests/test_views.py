@@ -600,3 +600,130 @@ class CartViewSetTest(APITestCase):
         response = self.client.get(self.cart_detail_url)
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+
+class OrderViewSetTest(APITestCase):
+
+    def setUp(self):
+        """Set up test data before each test runs."""
+        self.client = APIClient()
+
+        # Create an admin user
+        self.admin_user = User.objects.create_superuser(
+            username="admin",
+            email="admin@example.com", 
+            password="adminpass"
+        )
+
+        # Create a regular user
+        self.user = User.objects.create_user(
+            username="testuser",
+            email="testuser@example.com",  
+            password="password123"
+        )
+
+        # Create a customer linked to the regular user
+        self.customer, created = Customer.objects.get_or_create(
+            user=self.user
+        )
+        # Create a category
+        self.category = Category.objects.create(name="Office Supplies")
+        
+        # Create a product
+        self.product = Product.objects.create(
+            name="Test Product",
+            price=50.0,
+            stock=10,
+            category=self.category  
+        )
+
+        # Create an order for the regular user
+        self.order = Order.objects.create(customer=self.customer)
+
+        # Create an order item linked to the order
+        self.order_item = OrderItem.objects.create(order=self.order, product=self.product, quantity=2)
+
+        # Define URLs
+        self.order_list_url = reverse("order-list")
+        self.order_detail_url = reverse("order-detail", kwargs={"pk": self.order.pk})
+
+    def test_create_order_authenticated(self):
+        """Test that an authenticated user can create an order."""
+        self.client.force_authenticate(user=self.user)
+
+        # Create a cart for the user
+        cart = Cart.objects.create()
+
+        # Add an item to the cart to satisfy the validation check
+        cart_item = CartItem.objects.create(cart=cart, product=self.product, quantity=1)
+
+        payload = {
+            "cart_id": str(cart.id) 
+        }
+
+        response = self.client.post(self.order_list_url, payload)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(Order.objects.filter(id=response.data["id"]).exists())
+
+
+    def test_get_orders_authenticated_user(self):
+        """Test that an authenticated user can retrieve only their orders."""
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self.order_list_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)  # Regular user sees only their orders
+
+    def test_get_orders_admin(self):
+        """Test that an admin user can retrieve all orders."""
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.get(self.order_list_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(len(response.data), 1)  # Admin can see all orders
+
+
+    def test_update_order_admin_only(self):
+        """Test that only an admin can update an order."""
+        self.client.force_authenticate(user=self.user)
+
+        payload = {"status": "p"}
+        response = self.client.patch(self.order_detail_url, payload)
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)  # Regular user cannot update orders
+
+        # Now authenticate as admin
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.patch(self.order_detail_url, payload)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+    def test_delete_order_admin_only(self):
+        """Test that only an admin can delete an order."""
+        self.client.force_authenticate(user=self.user)
+
+        # Delete all order items before deleting the order
+        OrderItem.objects.filter(order=self.order).delete() 
+
+        response = self.client.delete(self.order_detail_url)
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)  # Regular user cannot delete orders
+
+        # Now authenticate as admin
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.delete(self.order_detail_url)
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Order.objects.filter(pk=self.order.pk).exists())
+
+    def test_unauthenticated_user_cannot_access_orders(self):
+        """Test that an unauthenticated user cannot access orders."""
+        self.client.logout()
+        response = self.client.get(self.order_list_url)
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
