@@ -391,7 +391,7 @@ class CustomerViewSetTest(APITestCase):
         self.customer_list = reverse('customer-list')
         self.customer_me = reverse('customer-me')
 
-            
+
     def test_me_get_authenticated(self):
         """Test that an authenticated user can retrieve their customer profile."""
         self.client.force_authenticate(user=self.customer_user)
@@ -450,4 +450,98 @@ class CustomerViewSetTest(APITestCase):
         self.client.force_authenticate(user=self.customer_user)
         response = self.client.get(self.customer_list)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+
+class CartItemViewSetTest(APITestCase):
+
+    def setUp(self):
+        """Set up test data before each test runs."""
+        self.client = APIClient()
+
+        # Create a user and authenticate
+        self.user = User.objects.create_user(
+            email='user@test.com',
+            username='user',
+            password='password'
+        )
+        self.client.force_authenticate(user=self.user)
+
+        # Create a cart for the user
+        self.cart = Cart.objects.create()
+
+        # Create a category
+        self.category = Category.objects.create(name="Office Supplies")
         
+        # Create a product 
+        self.product = Product.objects.create(
+            name="Test Product",
+            price=50.0,
+            stock=10,
+            category=self.category  
+        )
+
+
+        # Create a cart item
+        self.cart_item = CartItem.objects.create(cart=self.cart, product=self.product, quantity=1)
+
+        # Set URLs for tests
+        self.cart_items_url = reverse("cart-items-list", kwargs={"cart_pk": str(self.cart.pk)})
+        self.cart_item_detail_url = reverse("cart-items-detail", kwargs={"cart_pk": str(self.cart.pk), "pk": self.cart_item.pk})
+
+
+    def test_get_cart_items_authenticated(self):
+        """Test that an authenticated user can retrieve cart items."""
+        response = self.client.get(self.cart_items_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)  # Ensure one item exists in the cart
+        self.assertEqual(response.data[0]["product"]["id"], self.product.id)
+
+
+    def test_add_cart_item_authenticated(self):
+        """Test that an authenticated user can add an item to the cart."""
+        new_product = Product.objects.create(
+            name="Test Product",
+            price=50.0,
+            stock=10,
+            category=self.category  
+        )
+
+        payload = {
+            "product": new_product.id,
+            "quantity": 2
+        }
+
+        response = self.client.post(self.cart_items_url, payload)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(CartItem.objects.filter(cart=self.cart).count(), 2)
+
+
+    def test_update_cart_item_authenticated(self):
+        """Test that an authenticated user can update the quantity of a cart item."""
+        payload = {
+            "quantity": 3
+        }
+
+        response = self.client.patch(self.cart_item_detail_url, payload)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.cart_item.refresh_from_db()
+        self.assertEqual(self.cart_item.quantity, 3)
+
+    def test_delete_cart_item_authenticated(self):
+        """Test that an authenticated user can remove an item from their cart."""
+        response = self.client.delete(self.cart_item_detail_url)
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(CartItem.objects.filter(pk=self.cart_item.pk).exists())
+
+
+    def test_unauthenticated_user_cannot_access_cart(self):
+        """Test that an unauthenticated user cannot access cart items."""
+        self.client.logout()
+        response = self.client.get(self.cart_items_url)
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
