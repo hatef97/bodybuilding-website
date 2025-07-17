@@ -161,3 +161,103 @@ class ProductViewSetTest(APITestCase):
         """✅ Order products by price."""
         response = self.client.get(f"{self.product_list_url}?ordering=price")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+
+class CategoryViewSetTest(APITestCase):
+
+    def setUp(self):
+        """Set up test data."""
+        # adjust to pass only email & password (and any required extra_fields)
+        self.admin_user = User.objects.create_superuser(
+            email='admin@test.com',
+            username='admin',
+            password='password'
+        )
+        self.regular_user = User.objects.create_user(
+            email='user@test.com',
+            username='user',
+            password='password'
+        )
+
+        self.category1 = Category.objects.create(name="Electronics")
+        self.category2 = Category.objects.create(name="Books")
+
+        self.category_list_url   = reverse('category-list')
+        self.category_detail_url = reverse(
+            'category-detail',
+            kwargs={'pk': self.category1.pk}
+        )
+
+
+    def test_list_categories(self):
+        """✅ Test retrieving the list of categories."""
+        response = self.client.get(self.category_list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(len(response.data), 2)
+
+
+    def test_retrieve_category(self):
+        """✅ Test retrieving a single category."""
+        response = self.client.get(self.category_detail_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['name'], self.category1.name)
+
+
+    def test_admin_can_create_category(self):
+        """✅ Test that an admin user can create a category."""
+        self.client.force_authenticate(user=self.admin_user)
+        data = {"name": "Fashion"}
+        response = self.client.post(self.category_list_url, data)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(Category.objects.filter(name="Fashion").exists())
+
+
+    def test_non_admin_cannot_create_category(self):
+        """❌ Test that a regular user cannot create a category."""
+        self.client.force_authenticate(user=self.regular_user)
+        data = {"name": "Fashion"}
+        response = self.client.post(self.category_list_url, data)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+    def test_admin_can_update_category(self):
+        """✅ Test that an admin user can update a category."""
+        self.client.force_authenticate(user=self.admin_user)
+        data = {"name": "Updated Electronics"}
+        response = self.client.put(self.category_detail_url, data)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.category1.refresh_from_db()
+        self.assertEqual(self.category1.name, "Updated Electronics")
+
+
+    def test_non_admin_cannot_update_category(self):
+        """❌ Test that a regular user cannot update a category."""
+        self.client.force_authenticate(user=self.regular_user)
+        data = {"name": "Updated Electronics"}
+        response = self.client.put(self.category_detail_url, data)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+    def test_cannot_delete_category_with_products(self):
+        """❌ Test that a category with products cannot be deleted."""
+        Product.objects.create(name="Laptop", category=self.category1, price=1000, stock=10)
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.delete(self.category_detail_url)
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertIn('Cannot delete category with existing products. Remove products first.', response.data['error'])
+
+
+    def test_admin_can_delete_empty_category(self):
+        """✅ Test that an admin user can delete a category without products."""
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.delete(self.category_detail_url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Category.objects.filter(pk=self.category1.pk).exists())
+
+
+    def test_non_admin_cannot_delete_category(self):
+        """❌ Test that a regular user cannot delete a category."""
+        self.client.force_authenticate(user=self.regular_user)
+        response = self.client.delete(self.category_detail_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
