@@ -356,3 +356,98 @@ class CommentViewSetTest(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)  # Should return 401
         self.assertEqual(Comment.objects.count(), 1)  # Comment should still exist  
+
+
+
+class CustomerViewSetTest(APITestCase):
+    
+    def setUp(self):
+        self.client = APIClient()
+
+        # Clear old data before each test
+        User.objects.all().delete()
+        Customer.objects.all().delete()
+
+        # Create admin user
+        self.admin_user = User.objects.create_superuser(
+            username='admin',
+            email='admin@example.com',
+            password='adminpass'
+        )
+
+        # Create regular customer user
+        self.customer_user = User.objects.create_user(
+            username='customer',
+            email='customer@example.com',
+            password='password'
+        )
+
+        # Create the Customer first
+        self.customer, created = Customer.objects.get_or_create(
+            user=self.customer_user
+        )
+
+        # Set URLs
+        self.customer_list = reverse('customer-list')
+        self.customer_me = reverse('customer-me')
+
+            
+    def test_me_get_authenticated(self):
+        """Test that an authenticated user can retrieve their customer profile."""
+        self.client.force_authenticate(user=self.customer_user)
+
+        response = self.client.get(self.customer_me)
+
+        # Ensure request was successful
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Ensure the response contains customer data
+        self.assertEqual(response.data["user"], self.customer_user.id)
+        self.assertEqual(response.data["phone_number"], self.customer.phone_number)
+        self.assertEqual(response.data["birth_date"], str(self.customer.birth_date) if self.customer.birth_date else None)
+
+    def test_me_put_authenticated(self):
+        """Test that an authenticated user can update their customer profile."""
+        url = reverse('customer-me')
+        self.client.force_authenticate(user=self.customer_user)
+
+        # New data
+        updated_data = {
+            "phone_number": "987-654-3210",
+            "birth_date": "1995-05-15"
+        }
+
+        # Send PUT request
+        response = self.client.put(url, updated_data)
+
+        # Ensure request was successful
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Refresh customer from database
+        self.customer.refresh_from_db()
+
+        # Assert changes
+        self.assertEqual(self.customer.phone_number, "987-654-3210")
+        self.assertEqual(str(self.customer.birth_date), "1995-05-15")
+
+
+    def test_me_unauthenticated(self):
+        """Test that an unauthenticated user cannot access 'me' endpoint."""
+        self.client.logout()
+        response = self.client.get(self.customer_me)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    
+    def test_admin_can_access_customer_list(self):
+        """Test that an admin user can access the customer list."""
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get(self.customer_list)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+    
+    
+    def test_non_admin_cannot_access_customer_list(self):
+        """Test that a non-admin user cannot access the customer list."""
+        self.client.force_authenticate(user=self.customer_user)
+        response = self.client.get(self.customer_list)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        
