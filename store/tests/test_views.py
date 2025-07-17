@@ -545,3 +545,58 @@ class CartItemViewSetTest(APITestCase):
         response = self.client.get(self.cart_items_url)
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+
+class CartViewSetTest(APITestCase):
+
+    def setUp(self):
+        """Set up test data before each test runs."""
+        self.client = APIClient()
+
+        # Create a user and authenticate
+        self.user = User.objects.create_user(
+            email='user@test.com',
+            username='user',
+            password='password'
+        )
+        self.client.force_authenticate(user=self.user)
+
+        # Create a cart for the user
+        self.cart = Cart.objects.create()
+
+        # Set URLs for tests
+        self.cart_list_url = reverse("cart-list")  # Ensure correct router registration
+        self.cart_detail_url = reverse("cart-detail", kwargs={"pk": self.cart.pk})
+
+
+    def test_create_cart_authenticated(self):
+        """Test that an authenticated user can create a cart."""
+        response = self.client.post(self.cart_list_url)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(Cart.objects.filter(id=response.data["id"]).exists())
+
+
+    def test_retrieve_cart_authenticated(self):
+        """Test that an authenticated user can retrieve their cart."""
+        response = self.client.get(self.cart_detail_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], str(self.cart.pk))  # Cart ID is usually a UUID
+
+
+    def test_delete_cart_authenticated(self):
+        """Test that an authenticated user can delete their cart."""
+        response = self.client.delete(self.cart_detail_url)
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Cart.objects.filter(pk=self.cart.pk).exists())
+
+
+    def test_unauthenticated_user_cannot_access_cart(self):
+        """Test that an unauthenticated user cannot access cart details."""
+        self.client.logout()  # Ensure user is logged out
+        response = self.client.get(self.cart_detail_url)
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
